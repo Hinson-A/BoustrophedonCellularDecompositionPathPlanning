@@ -9,128 +9,13 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <vector>
 
-/** 地图默认是空闲区域为白色，障碍物为黑色 **/
+#include "bcd.h"
+#include "map_sdk.h"
+// #include "common_data.h"
 
-enum EventType {
-  IN,
-  IN_TOP,
-  IN_BOTTOM,
-  OUT,
-  OUT_TOP,
-  OUT_BOTTOM,
-  INNER_IN,
-  INNER_IN_TOP,
-  INNER_IN_BOTTOM,
-  INNER_OUT,
-  INNER_OUT_TOP,
-  INNER_OUT_BOTTOM,
+using namespace CommonData;
 
-  IN_EX,
-  IN_TOP_EX,
-  IN_BOTTOM_EX,
-  OUT_EX,
-  OUT_TOP_EX,
-  OUT_BOTTOM_EX,
-  INNER_IN_EX,
-  INNER_IN_TOP_EX,
-  INNER_IN_BOTTOM_EX,
-  INNER_OUT_EX,
-  INNER_OUT_TOP_EX,
-  INNER_OUT_BOTTOM_EX,
-
-  MIDDLE,
-  CEILING,
-  FLOOR,
-  UNALLOCATED
-};
-
-enum VisualizationMode { PATH_MODE, ROBOT_MODE };
-
-const int TOPLEFT = 0;
-const int BOTTOMLEFT = 1;
-const int BOTTOMRIGHT = 2;
-const int TOPRIGHT = 3;
-
-const int palette_colors = 1530;
-
-class Point2D {
- public:
-  Point2D() {
-    x = INT_MAX;
-    y = INT_MAX;
-  }
-  Point2D(int x_pos, int y_pos) {
-    x = x_pos;
-    y = y_pos;
-  }
-  Point2D(const Point2D& point) {
-    x = point.x;
-    y = point.y;
-  }
-  int x;
-  int y;
-};
-
-/** 多边形顶点按照逆时针旋转排序 **/
-typedef std::vector<Point2D> Polygon;
-typedef std::vector<Polygon> PolygonList;
-typedef std::deque<Point2D> Edge;
-
-class Event {
- public:
-  Event(int obstacle_idx, int x_pos, int y_pos, EventType type = UNALLOCATED) {
-    obstacle_index = obstacle_idx;
-    x = x_pos;
-    y = y_pos;
-    event_type = type;
-    original_index_in_slice = INT_MAX;
-    isUsed = false;
-  }
-
-  int x;
-  int y;
-  int original_index_in_slice;
-  int obstacle_index;
-  EventType event_type;
-
-  bool isUsed;
-};
-
-class CellNode {
- public:
-  CellNode() {
-    isVisited = false;
-    isCleaned = false;
-    parentIndex = INT_MAX;
-    cellIndex = INT_MAX;
-  }
-  bool isVisited;
-  bool isCleaned;
-  Edge ceiling;
-  Edge floor;
-
-  int parentIndex;
-  std::deque<int> neighbor_indices;
-
-  int cellIndex;
-};
-
-bool operator<(const Point2D& p1, const Point2D& p2) {
-  return (p1.x < p2.x || (p1.x == p2.x && p1.y < p2.y));
-}
-
-bool operator<(const Event& e1, const Event& e2) {
-  return (
-      e1.x < e2.x || (e1.x == e2.x && e1.y < e2.y) ||
-      (e1.x == e2.x && e1.y == e2.y && e1.obstacle_index < e2.obstacle_index));
-}
-
-bool operator==(const Point2D& p1, const Point2D& p2) {
-  return (p1.x == p2.x && p1.y == p2.y);
-}
-
-bool operator!=(const Point2D& p1, const Point2D& p2) { return !(p1 == p2); }
-
+BoustrophedonCellDecomposition bcd;
 /** 路径规划功能函数 **/
 
 int WrappedIndex(int index, int list_length) {
@@ -241,20 +126,20 @@ std::deque<Point2D> GetBoustrophedonPath(std::vector<CellNode>& cell_graph,
   floor.assign(cell.floor.begin(), cell.floor.end());
 
   if (cell_graph[cell.cellIndex].isCleaned) {
-    if (corner_indicator == TOPLEFT) {
-      path.emplace_back(corner_points[TOPLEFT]);
+    if (corner_indicator == TOP_LEFT) {
+      path.emplace_back(corner_points[TOP_LEFT]);
     }
-    if (corner_indicator == TOPRIGHT) {
-      path.emplace_back(corner_points[TOPRIGHT]);
+    if (corner_indicator == TOP_RIGHT) {
+      path.emplace_back(corner_points[TOP_RIGHT]);
     }
-    if (corner_indicator == BOTTOMLEFT) {
-      path.emplace_back(corner_points[BOTTOMLEFT]);
+    if (corner_indicator == BOTTOM_LEFT) {
+      path.emplace_back(corner_points[BOTTOM_LEFT]);
     }
-    if (corner_indicator == BOTTOMRIGHT) {
-      path.emplace_back(corner_points[BOTTOMRIGHT]);
+    if (corner_indicator == BOTTOM_RIGHT) {
+      path.emplace_back(corner_points[BOTTOM_RIGHT]);
     }
   } else {
-    if (corner_indicator == TOPLEFT) {
+    if (corner_indicator == TOP_LEFT) {
       int x, y, y_start, y_end;
       bool reverse = false;
 
@@ -377,7 +262,7 @@ std::deque<Point2D> GetBoustrophedonPath(std::vector<CellNode>& cell_graph,
       }
     }
 
-    if (corner_indicator == TOPRIGHT) {
+    if (corner_indicator == TOP_RIGHT) {
       int x = 0, y = 0, y_start = 0, y_end = 0;
       bool reverse = false;
 
@@ -497,7 +382,7 @@ std::deque<Point2D> GetBoustrophedonPath(std::vector<CellNode>& cell_graph,
       }
     }
 
-    if (corner_indicator == BOTTOMLEFT) {
+    if (corner_indicator == BOTTOM_LEFT) {
       int x = 0, y = 0, y_start = 0, y_end = 0;
       bool reverse = false;
 
@@ -619,7 +504,7 @@ std::deque<Point2D> GetBoustrophedonPath(std::vector<CellNode>& cell_graph,
       }
     }
 
-    if (corner_indicator == BOTTOMRIGHT) {
+    if (corner_indicator == BOTTOM_RIGHT) {
       int x = 0, y = 0, y_start = 0, y_end = 0;
       bool reverse = false;
 
@@ -743,911 +628,6 @@ std::deque<Point2D> GetBoustrophedonPath(std::vector<CellNode>& cell_graph,
   return path;
 }
 
-std::vector<Event> InitializeEventList(const Polygon& polygon,
-                                       int polygon_index) {
-  std::vector<Event> event_list;
-
-  for (const auto& point : polygon) {
-    event_list.emplace_back(Event(polygon_index, point.x, point.y));
-  }
-
-  return event_list;
-}
-
-void AllocateObstacleEventType(const cv::Mat& map,
-                               std::vector<Event>& event_list) {
-  int index_offset;
-  std::deque<int> in_out_index_list;  // 只存放各种in和out的index
-
-  int N = event_list.size();
-
-  // determine in and out and middle
-  for (int i = 0; i < N; i++) {
-    if (event_list[i].x < event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x < event_list[((i + 1) % N + N) % N].x) {
-      event_list[i].event_type = IN;
-      in_out_index_list.emplace_back(i);
-    }
-    if (event_list[i].x < event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y < event_list[((i + 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i + index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x < event_list[((i + index_offset) % N + N) % N].x &&
-          event_list[i].y < event_list[((i + index_offset) % N + N) % N].y) {
-        event_list[i].event_type = IN_TOP;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x < event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y < event_list[((i - 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i - index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x < event_list[((i - index_offset) % N + N) % N].x &&
-          event_list[i].y < event_list[((i - index_offset) % N + N) % N].y) {
-        event_list[i].event_type = IN_TOP;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x < event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y > event_list[((i + 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i + index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x < event_list[((i + index_offset) % N + N) % N].x &&
-          event_list[i].y > event_list[((i + index_offset) % N + N) % N].y) {
-        event_list[i].event_type = IN_BOTTOM;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x < event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y > event_list[((i - 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i - index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x < event_list[((i - index_offset) % N + N) % N].x &&
-          event_list[i].y > event_list[((i - index_offset) % N + N) % N].y) {
-        event_list[i].event_type = IN_BOTTOM;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x) {
-      event_list[i].event_type = MIDDLE;
-    }
-
-    if (event_list[i].x > event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x > event_list[((i + 1) % N + N) % N].x) {
-      event_list[i].event_type = OUT;
-      in_out_index_list.emplace_back(i);
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x > event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y < event_list[((i - 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i - index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x > event_list[((i - index_offset) % N + N) % N].x &&
-          event_list[i].y < event_list[((i - index_offset) % N + N) % N].y) {
-        event_list[i].event_type = OUT_TOP;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x > event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y < event_list[((i + 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i + index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x > event_list[((i + index_offset) % N + N) % N].x &&
-          event_list[i].y < event_list[((i + index_offset) % N + N) % N].y) {
-        event_list[i].event_type = OUT_TOP;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x > event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y > event_list[((i - 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i - index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x > event_list[((i - index_offset) % N + N) % N].x &&
-          event_list[i].y > event_list[((i - index_offset) % N + N) % N].y) {
-        event_list[i].event_type = OUT_BOTTOM;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x > event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y > event_list[((i + 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i + index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x > event_list[((i + index_offset) % N + N) % N].x &&
-          event_list[i].y > event_list[((i + index_offset) % N + N) % N].y) {
-        event_list[i].event_type = OUT_BOTTOM;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-  }
-
-  // determine inner
-  Point2D neighbor_point;
-  int temp_index;
-
-  for (auto in_out_index : in_out_index_list) {
-    if (event_list[in_out_index].event_type == OUT) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x + 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-          cv::Vec3b(0, 0, 0)) {
-        event_list[in_out_index].event_type = INNER_OUT;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == OUT_TOP) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x + 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-          cv::Vec3b(0, 0, 0)) {
-        event_list[in_out_index].event_type = INNER_OUT_TOP;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == OUT_BOTTOM) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x + 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-          cv::Vec3b(0, 0, 0)) {
-        event_list[in_out_index].event_type = INNER_OUT_BOTTOM;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == IN) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x - 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-          cv::Vec3b(0, 0, 0)) {
-        event_list[in_out_index].event_type = INNER_IN;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == IN_TOP) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x - 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-          cv::Vec3b(0, 0, 0)) {
-        event_list[in_out_index].event_type = INNER_IN_TOP;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == IN_BOTTOM) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x - 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-          cv::Vec3b(0, 0, 0)) {
-        event_list[in_out_index].event_type = INNER_IN_BOTTOM;
-      }
-    }
-  }
-
-  // determine floor and ceiling
-  std::deque<int> ceiling_floor_index_list;
-
-  for (int i = 0; i < in_out_index_list.size(); i++) {
-    if ((event_list[in_out_index_list[0]].event_type == OUT ||
-         event_list[in_out_index_list[0]].event_type == OUT_TOP ||
-         event_list[in_out_index_list[0]].event_type == OUT_BOTTOM ||
-         event_list[in_out_index_list[0]].event_type == INNER_OUT ||
-         event_list[in_out_index_list[0]].event_type == INNER_OUT_TOP ||
-         event_list[in_out_index_list[0]].event_type == INNER_OUT_BOTTOM) &&
-        (event_list[in_out_index_list[1]].event_type == IN ||
-         event_list[in_out_index_list[1]].event_type == IN_TOP ||
-         event_list[in_out_index_list[1]].event_type == IN_BOTTOM ||
-         event_list[in_out_index_list[1]].event_type == INNER_IN ||
-         event_list[in_out_index_list[1]].event_type == INNER_IN_TOP ||
-         event_list[in_out_index_list[1]].event_type == INNER_IN_BOTTOM)) {
-      if (in_out_index_list[0] < in_out_index_list[1]) {
-        for (int j = in_out_index_list[0] + 1; j < in_out_index_list[1]; j++) {
-          if (event_list[j].event_type != MIDDLE) {
-            event_list[j].event_type = FLOOR;
-            ceiling_floor_index_list.emplace_back(j);
-          }
-        }
-      } else {
-        for (int j = in_out_index_list[0] + 1; j < event_list.size(); j++) {
-          if (event_list[j].event_type != MIDDLE) {
-            event_list[j].event_type = FLOOR;
-            ceiling_floor_index_list.emplace_back(j);
-          }
-        }
-        for (int k = 0; k < in_out_index_list[1]; k++) {
-          if (event_list[k].event_type != MIDDLE) {
-            event_list[k].event_type = FLOOR;
-            ceiling_floor_index_list.emplace_back(k);
-          }
-        }
-      }
-    }
-
-    if ((event_list[in_out_index_list[0]].event_type == IN ||
-         event_list[in_out_index_list[0]].event_type == IN_TOP ||
-         event_list[in_out_index_list[0]].event_type == IN_BOTTOM ||
-         event_list[in_out_index_list[0]].event_type == INNER_IN ||
-         event_list[in_out_index_list[0]].event_type == INNER_IN_TOP ||
-         event_list[in_out_index_list[0]].event_type == INNER_IN_BOTTOM) &&
-        (event_list[in_out_index_list[1]].event_type == OUT ||
-         event_list[in_out_index_list[1]].event_type == OUT_TOP ||
-         event_list[in_out_index_list[1]].event_type == OUT_BOTTOM ||
-         event_list[in_out_index_list[1]].event_type == INNER_OUT ||
-         event_list[in_out_index_list[1]].event_type == INNER_OUT_TOP ||
-         event_list[in_out_index_list[1]].event_type == INNER_OUT_BOTTOM)) {
-      if (in_out_index_list[0] < in_out_index_list[1]) {
-        for (int j = in_out_index_list[0] + 1; j < in_out_index_list[1]; j++) {
-          if (event_list[j].event_type != MIDDLE) {
-            event_list[j].event_type = CEILING;
-            ceiling_floor_index_list.emplace_back(j);
-          }
-        }
-      } else {
-        for (int j = in_out_index_list[0] + 1; j < event_list.size(); j++) {
-          if (event_list[j].event_type != MIDDLE) {
-            event_list[j].event_type = CEILING;
-            ceiling_floor_index_list.emplace_back(j);
-          }
-        }
-        for (int k = 0; k < in_out_index_list[1]; k++) {
-          if (event_list[k].event_type != MIDDLE) {
-            event_list[k].event_type = CEILING;
-            ceiling_floor_index_list.emplace_back(k);
-          }
-        }
-      }
-    }
-
-    temp_index = in_out_index_list.front();
-    in_out_index_list.pop_front();
-    in_out_index_list.emplace_back(temp_index);
-  }
-
-  // filter ceiling and floor
-  for (int i = 0; i < ceiling_floor_index_list.size() - 1; i++) {
-    if (event_list[ceiling_floor_index_list[i]].event_type == CEILING &&
-        event_list[ceiling_floor_index_list[i + 1]].event_type == CEILING &&
-        event_list[ceiling_floor_index_list[i]].x ==
-            event_list[ceiling_floor_index_list[i + 1]].x) {
-      if (event_list[ceiling_floor_index_list[i]].y >
-          event_list[ceiling_floor_index_list[i + 1]].y) {
-        event_list[ceiling_floor_index_list[i + 1]].event_type = MIDDLE;
-      } else {
-        event_list[ceiling_floor_index_list[i]].event_type = MIDDLE;
-      }
-    }
-    if (event_list[ceiling_floor_index_list[i]].event_type == FLOOR &&
-        event_list[ceiling_floor_index_list[i + 1]].event_type == FLOOR &&
-        event_list[ceiling_floor_index_list[i]].x ==
-            event_list[ceiling_floor_index_list[i + 1]].x) {
-      if (event_list[ceiling_floor_index_list[i]].y <
-          event_list[ceiling_floor_index_list[i + 1]].y) {
-        event_list[ceiling_floor_index_list[i + 1]].event_type = MIDDLE;
-      } else {
-        event_list[ceiling_floor_index_list[i]].event_type = MIDDLE;
-      }
-    }
-  }
-  if (event_list[ceiling_floor_index_list.back()].event_type == CEILING &&
-      event_list[ceiling_floor_index_list.front()].event_type == CEILING &&
-      event_list[ceiling_floor_index_list.back()].x ==
-          event_list[ceiling_floor_index_list.front()].x) {
-    if (event_list[ceiling_floor_index_list.back()].y >
-        event_list[ceiling_floor_index_list.front()].y) {
-      event_list[ceiling_floor_index_list.front()].event_type = MIDDLE;
-    } else {
-      event_list[ceiling_floor_index_list.back()].event_type = MIDDLE;
-    }
-  }
-  if (event_list[ceiling_floor_index_list.back()].event_type == FLOOR &&
-      event_list[ceiling_floor_index_list.front()].event_type == FLOOR &&
-      event_list[ceiling_floor_index_list.back()].x ==
-          event_list[ceiling_floor_index_list.front()].x) {
-    if (event_list[ceiling_floor_index_list.back()].y <
-        event_list[ceiling_floor_index_list.front()].y) {
-      event_list[ceiling_floor_index_list.front()].event_type = MIDDLE;
-    } else {
-      event_list[ceiling_floor_index_list.back()].event_type = MIDDLE;
-    }
-  }
-}
-
-void AllocateWallEventType(const cv::Mat& map, std::vector<Event>& event_list) {
-  int index_offset;
-  std::deque<int> in_out_index_list;  // 只存放各种in和out的index
-
-  int N = event_list.size();
-
-  // determine in and out and middle
-  for (int i = 0; i < N; i++) {
-    if (event_list[i].x < event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x < event_list[((i + 1) % N + N) % N].x) {
-      event_list[i].event_type = IN_EX;
-      in_out_index_list.emplace_back(i);
-    }
-    if (event_list[i].x < event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y < event_list[((i + 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i + index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x < event_list[((i + index_offset) % N + N) % N].x &&
-          event_list[i].y < event_list[((i + index_offset) % N + N) % N].y) {
-        event_list[i].event_type = IN_TOP_EX;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x < event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y < event_list[((i - 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i - index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x < event_list[((i - index_offset) % N + N) % N].x &&
-          event_list[i].y < event_list[((i - index_offset) % N + N) % N].y) {
-        event_list[i].event_type = IN_TOP_EX;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x < event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y > event_list[((i + 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i + index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x < event_list[((i + index_offset) % N + N) % N].x &&
-          event_list[i].y > event_list[((i + index_offset) % N + N) % N].y) {
-        event_list[i].event_type = IN_BOTTOM_EX;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x < event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y > event_list[((i - 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i - index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x < event_list[((i - index_offset) % N + N) % N].x &&
-          event_list[i].y > event_list[((i - index_offset) % N + N) % N].y) {
-        event_list[i].event_type = IN_BOTTOM_EX;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x) {
-      event_list[i].event_type = MIDDLE;
-    }
-
-    if (event_list[i].x > event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x > event_list[((i + 1) % N + N) % N].x) {
-      event_list[i].event_type = OUT_EX;
-      in_out_index_list.emplace_back(i);
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x > event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y < event_list[((i - 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i - index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x > event_list[((i - index_offset) % N + N) % N].x &&
-          event_list[i].y < event_list[((i - index_offset) % N + N) % N].y) {
-        event_list[i].event_type = OUT_TOP_EX;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x > event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y < event_list[((i + 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i + index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x > event_list[((i + index_offset) % N + N) % N].x &&
-          event_list[i].y < event_list[((i + index_offset) % N + N) % N].y) {
-        event_list[i].event_type = OUT_TOP_EX;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x == event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x > event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y > event_list[((i - 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i - index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x > event_list[((i - index_offset) % N + N) % N].x &&
-          event_list[i].y > event_list[((i - index_offset) % N + N) % N].y) {
-        event_list[i].event_type = OUT_BOTTOM_EX;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-
-    if (event_list[i].x > event_list[((i - 1) % N + N) % N].x &&
-        event_list[i].x == event_list[((i + 1) % N + N) % N].x &&
-        event_list[i].y > event_list[((i + 1) % N + N) % N].y) {
-      index_offset = 2;
-      while (event_list[i].x ==
-             event_list[((i + index_offset) % N + N) % N].x) {
-        index_offset++;
-      }
-      if (event_list[i].x > event_list[((i + index_offset) % N + N) % N].x &&
-          event_list[i].y > event_list[((i + index_offset) % N + N) % N].y) {
-        event_list[i].event_type = OUT_BOTTOM_EX;
-        in_out_index_list.emplace_back(i);
-      }
-    }
-  }
-
-  // determine inner
-  Point2D neighbor_point;
-  int temp_index;
-  for (auto in_out_index : in_out_index_list) {
-    if (event_list[in_out_index].event_type == OUT_EX) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x + 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-              cv::Vec3b(255, 255, 255) &&
-          neighbor_point.x < map.cols) {
-        event_list[in_out_index].event_type = INNER_OUT_EX;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == OUT_TOP_EX) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x + 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-              cv::Vec3b(255, 255, 255) &&
-          neighbor_point.x < map.cols) {
-        event_list[in_out_index].event_type = INNER_OUT_TOP_EX;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == OUT_BOTTOM_EX) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x + 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-              cv::Vec3b(255, 255, 255) &&
-          neighbor_point.x < map.cols) {
-        event_list[in_out_index].event_type = INNER_OUT_BOTTOM_EX;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == IN_EX) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x - 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-              cv::Vec3b(255, 255, 255) &&
-          neighbor_point.x >= 0) {
-        event_list[in_out_index].event_type = INNER_IN_EX;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == IN_TOP_EX) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x - 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-              cv::Vec3b(255, 255, 255) &&
-          neighbor_point.x >= 0) {
-        event_list[in_out_index].event_type = INNER_IN_TOP_EX;
-      }
-    }
-
-    if (event_list[in_out_index].event_type == IN_BOTTOM_EX) {
-      neighbor_point =
-          Point2D(event_list[in_out_index].x - 1, event_list[in_out_index].y);
-      if (map.at<cv::Vec3b>(neighbor_point.y, neighbor_point.x) ==
-              cv::Vec3b(255, 255, 255) &&
-          neighbor_point.x >= 0) {
-        event_list[in_out_index].event_type = INNER_IN_BOTTOM_EX;
-      }
-    }
-  }
-
-  // determine floor and ceiling
-  std::deque<int> ceiling_floor_index_list;
-
-  for (int i = 0; i < in_out_index_list.size(); i++) {
-    if ((event_list[in_out_index_list[0]].event_type == OUT_EX ||
-         event_list[in_out_index_list[0]].event_type == OUT_TOP_EX ||
-         event_list[in_out_index_list[0]].event_type == OUT_BOTTOM_EX ||
-         event_list[in_out_index_list[0]].event_type == INNER_OUT_EX ||
-         event_list[in_out_index_list[0]].event_type == INNER_OUT_TOP_EX ||
-         event_list[in_out_index_list[0]].event_type == INNER_OUT_BOTTOM_EX) &&
-        (event_list[in_out_index_list[1]].event_type == IN_EX ||
-         event_list[in_out_index_list[1]].event_type == IN_TOP_EX ||
-         event_list[in_out_index_list[1]].event_type == IN_BOTTOM_EX ||
-         event_list[in_out_index_list[1]].event_type == INNER_IN_EX ||
-         event_list[in_out_index_list[1]].event_type == INNER_IN_TOP_EX ||
-         event_list[in_out_index_list[1]].event_type == INNER_IN_BOTTOM_EX)) {
-      if (in_out_index_list[0] < in_out_index_list[1]) {
-        for (int j = in_out_index_list[0] + 1; j < in_out_index_list[1]; j++) {
-          if (event_list[j].event_type != MIDDLE) {
-            event_list[j].event_type = CEILING;
-            ceiling_floor_index_list.emplace_back(j);
-          }
-        }
-      } else {
-        for (int j = in_out_index_list[0] + 1; j < event_list.size(); j++) {
-          if (event_list[j].event_type != MIDDLE) {
-            event_list[j].event_type = CEILING;
-            ceiling_floor_index_list.emplace_back(j);
-          }
-        }
-        for (int k = 0; k < in_out_index_list[1]; k++) {
-          if (event_list[k].event_type != MIDDLE) {
-            event_list[k].event_type = CEILING;
-            ceiling_floor_index_list.emplace_back(k);
-          }
-        }
-      }
-    }
-
-    if ((event_list[in_out_index_list[0]].event_type == IN_EX ||
-         event_list[in_out_index_list[0]].event_type == IN_TOP_EX ||
-         event_list[in_out_index_list[0]].event_type == IN_BOTTOM_EX ||
-         event_list[in_out_index_list[0]].event_type == INNER_IN_EX ||
-         event_list[in_out_index_list[0]].event_type == INNER_IN_TOP_EX ||
-         event_list[in_out_index_list[0]].event_type == INNER_IN_BOTTOM_EX) &&
-        (event_list[in_out_index_list[1]].event_type == OUT_EX ||
-         event_list[in_out_index_list[1]].event_type == OUT_TOP_EX ||
-         event_list[in_out_index_list[1]].event_type == OUT_BOTTOM_EX ||
-         event_list[in_out_index_list[1]].event_type == INNER_OUT_EX ||
-         event_list[in_out_index_list[1]].event_type == INNER_OUT_TOP_EX ||
-         event_list[in_out_index_list[1]].event_type == INNER_OUT_BOTTOM_EX)) {
-      if (in_out_index_list[0] < in_out_index_list[1]) {
-        for (int j = in_out_index_list[0] + 1; j < in_out_index_list[1]; j++) {
-          if (event_list[j].event_type != MIDDLE) {
-            event_list[j].event_type = FLOOR;
-            ceiling_floor_index_list.emplace_back(j);
-          }
-        }
-      } else {
-        for (int j = in_out_index_list[0] + 1; j < event_list.size(); j++) {
-          if (event_list[j].event_type != MIDDLE) {
-            event_list[j].event_type = FLOOR;
-            ceiling_floor_index_list.emplace_back(j);
-          }
-        }
-        for (int k = 0; k < in_out_index_list[1]; k++) {
-          if (event_list[k].event_type != MIDDLE) {
-            event_list[k].event_type = FLOOR;
-            ceiling_floor_index_list.emplace_back(k);
-          }
-        }
-      }
-    }
-
-    temp_index = in_out_index_list.front();
-    in_out_index_list.pop_front();
-    in_out_index_list.emplace_back(temp_index);
-  }
-
-  // filter ceiling and floor
-  for (int i = 0; i < ceiling_floor_index_list.size() - 1; i++) {
-    if (event_list[ceiling_floor_index_list[i]].event_type == CEILING &&
-        event_list[ceiling_floor_index_list[i + 1]].event_type == CEILING &&
-        event_list[ceiling_floor_index_list[i]].x ==
-            event_list[ceiling_floor_index_list[i + 1]].x) {
-      if (event_list[ceiling_floor_index_list[i]].y >
-          event_list[ceiling_floor_index_list[i + 1]].y) {
-        event_list[ceiling_floor_index_list[i + 1]].event_type = MIDDLE;
-      } else {
-        event_list[ceiling_floor_index_list[i]].event_type = MIDDLE;
-      }
-    }
-    if (event_list[ceiling_floor_index_list[i]].event_type == FLOOR &&
-        event_list[ceiling_floor_index_list[i + 1]].event_type == FLOOR &&
-        event_list[ceiling_floor_index_list[i]].x ==
-            event_list[ceiling_floor_index_list[i + 1]].x) {
-      if (event_list[ceiling_floor_index_list[i]].y <
-          event_list[ceiling_floor_index_list[i + 1]].y) {
-        event_list[ceiling_floor_index_list[i + 1]].event_type = MIDDLE;
-      } else {
-        event_list[ceiling_floor_index_list[i]].event_type = MIDDLE;
-      }
-    }
-  }
-  if (event_list[ceiling_floor_index_list.back()].event_type == CEILING &&
-      event_list[ceiling_floor_index_list.front()].event_type == CEILING &&
-      event_list[ceiling_floor_index_list.back()].x ==
-          event_list[ceiling_floor_index_list.front()].x) {
-    if (event_list[ceiling_floor_index_list.back()].y >
-        event_list[ceiling_floor_index_list.front()].y) {
-      event_list[ceiling_floor_index_list.front()].event_type = MIDDLE;
-    } else {
-      event_list[ceiling_floor_index_list.back()].event_type = MIDDLE;
-    }
-  }
-  if (event_list[ceiling_floor_index_list.back()].event_type == FLOOR &&
-      event_list[ceiling_floor_index_list.front()].event_type == FLOOR &&
-      event_list[ceiling_floor_index_list.back()].x ==
-          event_list[ceiling_floor_index_list.front()].x) {
-    if (event_list[ceiling_floor_index_list.back()].y <
-        event_list[ceiling_floor_index_list.front()].y) {
-      event_list[ceiling_floor_index_list.front()].event_type = MIDDLE;
-    } else {
-      event_list[ceiling_floor_index_list.back()].event_type = MIDDLE;
-    }
-  }
-}
-
-std::vector<Event> GenerateObstacleEventList(const cv::Mat& map,
-                                             const PolygonList& polygons) {
-  std::vector<Event> event_list;
-  std::vector<Event> event_sublist;
-
-  for (int i = 0; i < polygons.size(); i++) {
-    event_sublist = InitializeEventList(polygons[i], i);
-    AllocateObstacleEventType(map, event_sublist);
-    event_list.insert(event_list.end(), event_sublist.begin(),
-                      event_sublist.end());
-    event_sublist.clear();
-  }
-
-  std::sort(event_list.begin(), event_list.end());
-
-  return event_list;
-}
-
-std::vector<Event> GenerateWallEventList(const cv::Mat& map,
-                                         const Polygon& external_contour) {
-  std::vector<Event> event_list;
-
-  event_list = InitializeEventList(external_contour, INT_MAX);
-  AllocateWallEventType(map, event_list);
-  std::sort(event_list.begin(), event_list.end());
-
-  return event_list;
-}
-
-std::deque<std::deque<Event>> SliceListGenerator(
-    const std::vector<Event>& wall_event_list,
-    const std::vector<Event>& obstacle_event_list) {
-  std::vector<Event> event_list;
-  event_list.insert(event_list.end(), obstacle_event_list.begin(),
-                    obstacle_event_list.end());
-  event_list.insert(event_list.end(), wall_event_list.begin(),
-                    wall_event_list.end());
-  std::sort(event_list.begin(), event_list.end());
-
-  std::deque<std::deque<Event>> slice_list;
-  std::deque<Event> slice;
-  int x = event_list.front().x;
-
-  for (auto event : event_list) {
-    if (event.x != x) {
-      slice_list.emplace_back(slice);
-
-      x = event.x;
-      slice.clear();
-      slice.emplace_back(event);
-    } else {
-      slice.emplace_back(event);
-    }
-  }
-  slice_list.emplace_back(slice);
-
-  return slice_list;
-}
-
-void ExecuteOpenOperation(std::vector<CellNode>& cell_graph, int curr_cell_idx,
-                          Point2D in, Point2D c, Point2D f,
-                          bool rewrite = false) {
-  CellNode top_cell, bottom_cell;
-
-  top_cell.ceiling.emplace_back(c);
-  top_cell.floor.emplace_back(in);
-
-  bottom_cell.ceiling.emplace_back(in);
-  bottom_cell.floor.emplace_back(f);
-
-  if (!rewrite) {
-    int top_cell_index = cell_graph.size();
-    int bottom_cell_index = cell_graph.size() + 1;
-
-    top_cell.cellIndex = top_cell_index;
-    bottom_cell.cellIndex = bottom_cell_index;
-    cell_graph.emplace_back(top_cell);
-    cell_graph.emplace_back(bottom_cell);
-
-    cell_graph[top_cell_index].neighbor_indices.emplace_back(curr_cell_idx);
-    cell_graph[bottom_cell_index].neighbor_indices.emplace_front(curr_cell_idx);
-
-    cell_graph[curr_cell_idx].neighbor_indices.emplace_front(top_cell_index);
-    cell_graph[curr_cell_idx].neighbor_indices.emplace_front(bottom_cell_index);
-  } else {
-    cell_graph[curr_cell_idx].ceiling.assign(top_cell.ceiling.begin(),
-                                             top_cell.ceiling.end());
-    cell_graph[curr_cell_idx].floor.assign(top_cell.floor.begin(),
-                                           top_cell.floor.end());
-
-    int bottom_cell_index = cell_graph.size();
-    bottom_cell.cellIndex = bottom_cell_index;
-    cell_graph.emplace_back(bottom_cell);
-
-    cell_graph[cell_graph[curr_cell_idx].neighbor_indices.back()]
-        .neighbor_indices.emplace_back(bottom_cell_index);
-    cell_graph[bottom_cell_index].neighbor_indices.emplace_back(
-        cell_graph[curr_cell_idx].neighbor_indices.back());
-  }
-}
-
-void ExecuteCloseOperation(std::vector<CellNode>& cell_graph, int top_cell_idx,
-                           int bottom_cell_idx, Point2D c, Point2D f,
-                           bool rewrite = false) {
-  CellNode new_cell;
-
-  new_cell.ceiling.emplace_back(c);
-  new_cell.floor.emplace_back(f);
-
-  if (!rewrite) {
-    int new_cell_idx = cell_graph.size();
-    new_cell.cellIndex = new_cell_idx;
-
-    cell_graph.emplace_back(new_cell);
-
-    cell_graph[new_cell_idx].neighbor_indices.emplace_back(top_cell_idx);
-    cell_graph[new_cell_idx].neighbor_indices.emplace_back(bottom_cell_idx);
-
-    cell_graph[top_cell_idx].neighbor_indices.emplace_front(new_cell_idx);
-    cell_graph[bottom_cell_idx].neighbor_indices.emplace_back(new_cell_idx);
-  } else {
-    cell_graph[top_cell_idx].ceiling.assign(new_cell.ceiling.begin(),
-                                            new_cell.ceiling.end());
-    cell_graph[top_cell_idx].floor.assign(new_cell.floor.begin(),
-                                          new_cell.floor.end());
-
-    cell_graph[top_cell_idx].neighbor_indices.emplace_back(bottom_cell_idx);
-    cell_graph[bottom_cell_idx].neighbor_indices.emplace_back(top_cell_idx);
-  }
-}
-
-void ExecuteCeilOperation(std::vector<CellNode>& cell_graph, int curr_cell_idx,
-                          const Point2D& ceil_point) {
-  cell_graph[curr_cell_idx].ceiling.emplace_back(ceil_point);
-}
-
-void ExecuteFloorOperation(std::vector<CellNode>& cell_graph, int curr_cell_idx,
-                           const Point2D& floor_point) {
-  cell_graph[curr_cell_idx].floor.emplace_back(floor_point);
-}
-
-void ExecuteOpenOperation(std::vector<CellNode>& cell_graph, int curr_cell_idx,
-                          Point2D in_top, Point2D in_bottom, Point2D c,
-                          Point2D f, bool rewrite = false) {
-  CellNode top_cell, bottom_cell;
-
-  top_cell.ceiling.emplace_back(c);
-  top_cell.floor.emplace_back(in_top);
-
-  bottom_cell.ceiling.emplace_back(in_bottom);
-  bottom_cell.floor.emplace_back(f);
-
-  if (!rewrite) {
-    int top_cell_index = cell_graph.size();
-    int bottom_cell_index = cell_graph.size() + 1;
-
-    top_cell.cellIndex = top_cell_index;
-    bottom_cell.cellIndex = bottom_cell_index;
-    cell_graph.emplace_back(top_cell);
-    cell_graph.emplace_back(bottom_cell);
-
-    cell_graph[top_cell_index].neighbor_indices.emplace_back(curr_cell_idx);
-    cell_graph[bottom_cell_index].neighbor_indices.emplace_front(curr_cell_idx);
-
-    cell_graph[curr_cell_idx].neighbor_indices.emplace_front(top_cell_index);
-    cell_graph[curr_cell_idx].neighbor_indices.emplace_front(bottom_cell_index);
-  } else {
-    cell_graph[curr_cell_idx].ceiling.assign(top_cell.ceiling.begin(),
-                                             top_cell.ceiling.end());
-    cell_graph[curr_cell_idx].floor.assign(top_cell.floor.begin(),
-                                           top_cell.floor.end());
-
-    int bottom_cell_index = cell_graph.size();
-    bottom_cell.cellIndex = bottom_cell_index;
-    cell_graph.emplace_back(bottom_cell);
-
-    cell_graph[cell_graph[curr_cell_idx].neighbor_indices.back()]
-        .neighbor_indices.emplace_back(bottom_cell_index);
-    cell_graph[bottom_cell_index].neighbor_indices.emplace_back(
-        cell_graph[curr_cell_idx].neighbor_indices.back());
-  }
-}
-
-void ExecuteInnerOpenOperation(std::vector<CellNode>& cell_graph,
-                               Point2D inner_in) {
-  CellNode new_cell;
-
-  new_cell.ceiling.emplace_back(inner_in);
-  new_cell.floor.emplace_back(inner_in);
-
-  int new_cell_index = cell_graph.size();
-
-  new_cell.cellIndex = new_cell_index;
-  cell_graph.emplace_back(new_cell);
-}
-
-void ExecuteInnerOpenOperation(std::vector<CellNode>& cell_graph,
-                               Point2D inner_in_top, Point2D inner_in_bottom) {
-  CellNode new_cell;
-
-  new_cell.ceiling.emplace_back(inner_in_top);
-  new_cell.floor.emplace_back(inner_in_bottom);
-
-  int new_cell_index = cell_graph.size();
-
-  new_cell.cellIndex = new_cell_index;
-  cell_graph.emplace_back(new_cell);
-}
-
-void ExecuteInnerCloseOperation(std::vector<CellNode>& cell_graph,
-                                int curr_cell_idx, Point2D inner_out) {
-  cell_graph[curr_cell_idx].ceiling.emplace_back(inner_out);
-  cell_graph[curr_cell_idx].floor.emplace_back(inner_out);
-}
-
-void ExecuteInnerCloseOperation(std::vector<CellNode>& cell_graph,
-                                int curr_cell_idx, Point2D inner_out_top,
-                                Point2D inner_out_bottom) {
-  cell_graph[curr_cell_idx].ceiling.emplace_back(inner_out_top);
-  cell_graph[curr_cell_idx].floor.emplace_back(inner_out_bottom);
-}
-
 void DrawCells(cv::Mat& map, const CellNode& cell,
                cv::Scalar color = cv::Scalar(100, 100, 100)) {
   std::cout << "cell " << cell.cellIndex << ": " << std::endl;
@@ -1670,790 +650,6 @@ void DrawCells(cv::Mat& map, const CellNode& cell,
            cv::Point(cell.floor.back().x, cell.floor.back().y), color);
 }
 
-int CountCells(const std::deque<Event>& slice, int curr_idx) {
-  int cell_num = 0;
-  for (int i = 0; i < curr_idx; i++) {
-    if ((slice[i].event_type == IN) || (slice[i].event_type == IN_TOP) ||
-        (slice[i].event_type == INNER_IN) ||
-        (slice[i].event_type == INNER_IN_BOTTOM) ||
-        (slice[i].event_type == FLOOR) ||
-        (slice[i].event_type == IN_BOTTOM_EX) ||
-        (slice[i].event_type == INNER_IN_EX) ||
-        (slice[i].event_type == INNER_IN_TOP_EX)) {
-      cell_num++;
-    }
-  }
-  return cell_num;
-}
-
-std::deque<Event> FilterSlice(const std::deque<Event>& slice) {
-  std::deque<Event> filtered_slice;
-
-  for (auto event : slice) {
-    if (event.event_type != MIDDLE && event.event_type != UNALLOCATED) {
-      filtered_slice.emplace_back(event);
-    }
-  }
-  return filtered_slice;
-}
-
-void ExecuteCellDecomposition(std::vector<CellNode>& cell_graph,
-                              std::vector<int>& cell_index_slice,
-                              std::vector<int>& original_cell_index_slice,
-                              const std::deque<std::deque<Event>>& slice_list) {
-  int curr_cell_idx = INT_MAX;
-  int top_cell_idx = INT_MAX;
-  int bottom_cell_idx = INT_MAX;
-
-  Point2D c, f;
-  int c_index = INT_MAX, f_index = INT_MAX;
-  int min_dist = INT_MAX;
-
-  int event_y = INT_MAX;
-
-  bool rewrite = false;
-
-  std::vector<int> sub_cell_index_slices;
-  std::deque<Event> curr_slice;
-
-  int cell_counter = 0;
-
-  for (const auto& raw_slice : slice_list) {
-    curr_slice = FilterSlice(raw_slice);
-
-    original_cell_index_slice.assign(cell_index_slice.begin(),
-                                     cell_index_slice.end());
-
-    for (int j = 0; j < curr_slice.size(); j++) {
-      if (curr_slice[j].event_type == INNER_IN_EX) {
-        event_y = curr_slice[j].y;
-        for (int k = 0; k < cell_index_slice.size(); k++) {
-          if (event_y > cell_graph[cell_index_slice[k]].ceiling.back().y &&
-              event_y < cell_graph[cell_index_slice[k]].floor.back().y) {
-            rewrite = std::find(original_cell_index_slice.begin(),
-                                original_cell_index_slice.end(),
-                                cell_index_slice[k]) ==
-                      original_cell_index_slice.end();  // 若为true，则覆盖
-
-            min_dist = INT_MAX;
-            for (int m = 0; m < curr_slice.size(); m++) {
-              if (abs(curr_slice[m].y -
-                      cell_graph[cell_index_slice[k]].ceiling.back().y) <
-                  min_dist) {
-                min_dist =
-                    abs(curr_slice[m].y -
-                        cell_graph[cell_index_slice[k]].ceiling.back().y);
-                c_index = m;
-                c = Point2D(curr_slice[m].x, curr_slice[m].y);
-              }
-            }
-            curr_slice[c_index].isUsed = true;
-
-            min_dist = INT_MAX;
-            for (int n = 0; n < curr_slice.size(); n++) {
-              if (abs(curr_slice[n].y -
-                      cell_graph[cell_index_slice[k]].floor.back().y) <
-                  min_dist) {
-                min_dist = abs(curr_slice[n].y -
-                               cell_graph[cell_index_slice[k]].floor.back().y);
-                f_index = n;
-                f = Point2D(curr_slice[n].x, curr_slice[n].y);
-              }
-            }
-            curr_slice[f_index].isUsed = true;
-
-            curr_cell_idx = cell_index_slice[k];
-            ExecuteOpenOperation(cell_graph, curr_cell_idx,
-                                 Point2D(curr_slice[j].x, curr_slice[j].y), c,
-                                 f, rewrite);
-
-            if (!rewrite) {
-              cell_index_slice.erase(cell_index_slice.begin() + k);
-              sub_cell_index_slices.clear();
-              sub_cell_index_slices = {int(cell_graph.size() - 2),
-                                       int(cell_graph.size() - 1)};
-              cell_index_slice.insert(cell_index_slice.begin() + k,
-                                      sub_cell_index_slices.begin(),
-                                      sub_cell_index_slices.end());
-            } else {
-              cell_index_slice.insert(cell_index_slice.begin() + k + 1,
-                                      int(cell_graph.size() - 1));
-            }
-
-            curr_slice[j].isUsed = true;
-
-            break;
-          }
-        }
-      }
-      if (curr_slice[j].event_type == INNER_OUT_EX) {
-        event_y = curr_slice[j].y;
-        for (int k = 1; k < cell_index_slice.size(); k++) {
-          if (event_y > cell_graph[cell_index_slice[k - 1]].ceiling.back().y &&
-              event_y < cell_graph[cell_index_slice[k]].floor.back().y) {
-            rewrite = std::find(original_cell_index_slice.begin(),
-                                original_cell_index_slice.end(),
-                                cell_index_slice[k - 1]) ==
-                      original_cell_index_slice.end();
-
-            min_dist = INT_MAX;
-            for (int m = 0; m < curr_slice.size(); m++) {
-              if (abs(curr_slice[m].y -
-                      cell_graph[cell_index_slice[k - 1]].ceiling.back().y) <
-                  min_dist) {
-                min_dist =
-                    abs(curr_slice[m].y -
-                        cell_graph[cell_index_slice[k - 1]].ceiling.back().y);
-                c_index = m;
-                c = Point2D(curr_slice[m].x, curr_slice[m].y);
-              }
-            }
-            curr_slice[c_index].isUsed = true;
-
-            min_dist = INT_MAX;
-            for (int n = 0; n < curr_slice.size(); n++) {
-              if (abs(curr_slice[n].y -
-                      cell_graph[cell_index_slice[k]].floor.back().y) <
-                  min_dist) {
-                min_dist = abs(curr_slice[n].y -
-                               cell_graph[cell_index_slice[k]].floor.back().y);
-                f_index = n;
-                f = Point2D(curr_slice[n].x, curr_slice[n].y);
-              }
-            }
-            curr_slice[f_index].isUsed = true;
-
-            top_cell_idx = cell_index_slice[k - 1];
-            bottom_cell_idx = cell_index_slice[k];
-
-            ExecuteCloseOperation(cell_graph, top_cell_idx, bottom_cell_idx, c,
-                                  f, rewrite);
-
-            if (!rewrite) {
-              cell_index_slice.erase(cell_index_slice.begin() + k - 1);
-              cell_index_slice.erase(cell_index_slice.begin() + k - 1);
-              cell_index_slice.insert(cell_index_slice.begin() + k - 1,
-                                      int(cell_graph.size() - 1));
-            } else {
-              cell_index_slice.erase(cell_index_slice.begin() + k);
-            }
-
-            curr_slice[j].isUsed = true;
-
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == INNER_IN_BOTTOM_EX) {
-        event_y = curr_slice[j].y;
-        for (int k = 0; k < cell_index_slice.size(); k++) {
-          if (event_y > cell_graph[cell_index_slice[k]].ceiling.back().y &&
-              event_y < cell_graph[cell_index_slice[k]].floor.back().y) {
-            rewrite = std::find(original_cell_index_slice.begin(),
-                                original_cell_index_slice.end(),
-                                cell_index_slice[k]) ==
-                      original_cell_index_slice.end();
-
-            min_dist = INT_MAX;
-            for (int m = 0; m < curr_slice.size(); m++) {
-              if (abs(curr_slice[m].y -
-                      cell_graph[cell_index_slice[k]].ceiling.back().y) <
-                  min_dist) {
-                min_dist =
-                    abs(curr_slice[m].y -
-                        cell_graph[cell_index_slice[k]].ceiling.back().y);
-                c_index = m;
-                c = Point2D(curr_slice[m].x, curr_slice[m].y);
-              }
-            }
-            curr_slice[c_index].isUsed = true;
-
-            min_dist = INT_MAX;
-            for (int n = 0; n < curr_slice.size(); n++) {
-              if (abs(curr_slice[n].y -
-                      cell_graph[cell_index_slice[k]].floor.back().y) <
-                  min_dist) {
-                min_dist = abs(curr_slice[n].y -
-                               cell_graph[cell_index_slice[k]].floor.back().y);
-                f_index = n;
-                f = Point2D(curr_slice[n].x, curr_slice[n].y);
-              }
-            }
-            curr_slice[f_index].isUsed = true;
-
-            curr_cell_idx = cell_index_slice[k];
-            ExecuteOpenOperation(
-                cell_graph, curr_cell_idx,
-                Point2D(curr_slice[j - 1].x, curr_slice[j - 1].y),  // in top
-                Point2D(curr_slice[j].x, curr_slice[j].y),          // in bottom
-                c, f, rewrite);
-
-            if (!rewrite) {
-              cell_index_slice.erase(cell_index_slice.begin() + k);
-              sub_cell_index_slices.clear();
-              sub_cell_index_slices = {int(cell_graph.size() - 2),
-                                       int(cell_graph.size() - 1)};
-              cell_index_slice.insert(cell_index_slice.begin() + k,
-                                      sub_cell_index_slices.begin(),
-                                      sub_cell_index_slices.end());
-            } else {
-              cell_index_slice.insert(cell_index_slice.begin() + k + 1,
-                                      int(cell_graph.size() - 1));
-            }
-
-            curr_slice[j - 1].isUsed = true;
-            curr_slice[j].isUsed = true;
-
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == INNER_OUT_BOTTOM_EX) {
-        event_y = curr_slice[j].y;
-        for (int k = 1; k < cell_index_slice.size(); k++) {
-          if (event_y > cell_graph[cell_index_slice[k - 1]].ceiling.back().y &&
-              event_y < cell_graph[cell_index_slice[k]].floor.back().y) {
-            rewrite = std::find(original_cell_index_slice.begin(),
-                                original_cell_index_slice.end(),
-                                cell_index_slice[k - 1]) ==
-                      original_cell_index_slice.end();
-
-            min_dist = INT_MAX;
-            for (int m = 0; m < curr_slice.size(); m++) {
-              if (abs(curr_slice[m].y -
-                      cell_graph[cell_index_slice[k - 1]].ceiling.back().y) <
-                  min_dist) {
-                min_dist =
-                    abs(curr_slice[m].y -
-                        cell_graph[cell_index_slice[k - 1]].ceiling.back().y);
-                c_index = m;
-                c = Point2D(curr_slice[m].x, curr_slice[m].y);
-              }
-            }
-            curr_slice[c_index].isUsed = true;
-
-            min_dist = INT_MAX;
-            for (int n = 0; n < curr_slice.size(); n++) {
-              if (abs(curr_slice[n].y -
-                      cell_graph[cell_index_slice[k]].floor.back().y) <
-                  min_dist) {
-                min_dist = abs(curr_slice[n].y -
-                               cell_graph[cell_index_slice[k]].floor.back().y);
-                f_index = n;
-                f = Point2D(curr_slice[n].x, curr_slice[n].y);
-              }
-            }
-            curr_slice[f_index].isUsed = true;
-
-            top_cell_idx = cell_index_slice[k - 1];
-            bottom_cell_idx = cell_index_slice[k];
-            ExecuteCloseOperation(cell_graph, top_cell_idx, bottom_cell_idx, c,
-                                  f, rewrite);
-
-            if (!rewrite) {
-              cell_index_slice.erase(cell_index_slice.begin() + k - 1);
-              cell_index_slice.erase(cell_index_slice.begin() + k - 1);
-              cell_index_slice.insert(cell_index_slice.begin() + k - 1,
-                                      int(cell_graph.size() - 1));
-            } else {
-              cell_index_slice.erase(cell_index_slice.begin() + k);
-            }
-
-            curr_slice[j - 1].isUsed = true;
-            curr_slice[j].isUsed = true;
-
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == IN_EX) {
-        event_y = curr_slice[j].y;
-
-        if (!cell_index_slice.empty()) {
-          for (int k = 1; k < cell_index_slice.size(); k++) {
-            if (event_y >= cell_graph[cell_index_slice[k - 1]].floor.back().y &&
-                event_y <= cell_graph[cell_index_slice[k]].ceiling.back().y) {
-              ExecuteInnerOpenOperation(
-                  cell_graph,
-                  Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_in
-              cell_index_slice.insert(cell_index_slice.begin() + k,
-                                      int(cell_graph.size() - 1));
-              curr_slice[j].isUsed = true;
-              break;
-            }
-          }
-          if (event_y <=
-              cell_graph[cell_index_slice.front()].ceiling.back().y) {
-            ExecuteInnerOpenOperation(
-                cell_graph,
-                Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_in
-            cell_index_slice.insert(cell_index_slice.begin(),
-                                    int(cell_graph.size() - 1));
-            curr_slice[j].isUsed = true;
-          }
-          if (event_y >= cell_graph[cell_index_slice.back()].floor.back().y) {
-            ExecuteInnerOpenOperation(
-                cell_graph,
-                Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_in
-            cell_index_slice.insert(cell_index_slice.end(),
-                                    int(cell_graph.size() - 1));
-            curr_slice[j].isUsed = true;
-          }
-
-        } else {
-          ExecuteInnerOpenOperation(
-              cell_graph,
-              Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_in
-          cell_index_slice.emplace_back(int(cell_graph.size() - 1));
-          curr_slice[j].isUsed = true;
-        }
-      }
-
-      if (curr_slice[j].event_type == IN_BOTTOM_EX) {
-        event_y = curr_slice[j].y;
-
-        if (!cell_index_slice.empty()) {
-          for (int k = 1; k < cell_index_slice.size(); k++) {
-            if (event_y >= cell_graph[cell_index_slice[k - 1]].floor.back().y &&
-                event_y <= cell_graph[cell_index_slice[k]].ceiling.back().y) {
-              ExecuteInnerOpenOperation(
-                  cell_graph,
-                  Point2D(curr_slice[j - 1].x,
-                          curr_slice[j - 1].y),  // inner_in_top,
-                  Point2D(curr_slice[j].x,
-                          curr_slice[j].y));  // inner_in_bottom
-
-              cell_index_slice.insert(cell_index_slice.begin() + k,
-                                      int(cell_graph.size() - 1));
-
-              curr_slice[j - 1].isUsed = true;
-              curr_slice[j].isUsed = true;
-
-              break;
-            }
-          }
-          if (event_y <=
-              cell_graph[cell_index_slice.front()].ceiling.back().y) {
-            ExecuteInnerOpenOperation(
-                cell_graph,
-                Point2D(curr_slice[j - 1].x,
-                        curr_slice[j - 1].y),                // inner_in_top,
-                Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_in_bottom
-
-            cell_index_slice.insert(cell_index_slice.begin(),
-                                    int(cell_graph.size() - 1));
-
-            curr_slice[j - 1].isUsed = true;
-            curr_slice[j].isUsed = true;
-          }
-          if (event_y >= cell_graph[cell_index_slice.back()].floor.back().y) {
-            ExecuteInnerOpenOperation(
-                cell_graph,
-                Point2D(curr_slice[j - 1].x,
-                        curr_slice[j - 1].y),                // inner_in_top,
-                Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_in_bottom
-
-            cell_index_slice.insert(cell_index_slice.end(),
-                                    int(cell_graph.size() - 1));
-
-            curr_slice[j - 1].isUsed = true;
-            curr_slice[j].isUsed = true;
-          }
-        } else {
-          ExecuteInnerOpenOperation(
-              cell_graph,
-              Point2D(curr_slice[j - 1].x,
-                      curr_slice[j - 1].y),                // inner_in_top,
-              Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_in_bottom
-
-          cell_index_slice.emplace_back(int(cell_graph.size() - 1));
-
-          curr_slice[j - 1].isUsed = true;
-          curr_slice[j].isUsed = true;
-        }
-      }
-
-      if (curr_slice[j].event_type == OUT_EX) {
-        event_y = curr_slice[j].y;
-
-        for (int k = 0; k < cell_index_slice.size(); k++) {
-          if (event_y >= cell_graph[cell_index_slice[k]].ceiling.back().y &&
-              event_y <= cell_graph[cell_index_slice[k]].floor.back().y) {
-            curr_cell_idx = cell_index_slice[k];
-            ExecuteInnerCloseOperation(
-                cell_graph, curr_cell_idx,
-                Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_out
-            cell_index_slice.erase(cell_index_slice.begin() + k);
-            curr_slice[j].isUsed = true;
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == OUT_BOTTOM_EX) {
-        event_y = curr_slice[j].y;
-
-        for (int k = 0; k < cell_index_slice.size(); k++) {
-          if (event_y >= cell_graph[cell_index_slice[k]].ceiling.back().y &&
-              event_y <= cell_graph[cell_index_slice[k]].floor.back().y) {
-            curr_cell_idx = cell_index_slice[k];
-            ExecuteInnerCloseOperation(
-                cell_graph, curr_cell_idx,
-                Point2D(curr_slice[j - 1].x, curr_slice[j - 1].y),
-                Point2D(curr_slice[j].x,
-                        curr_slice[j].y));  // inner_out_top, inner_out_bottom
-            cell_index_slice.erase(cell_index_slice.begin() + k);
-            curr_slice[j - 1].isUsed = true;
-            curr_slice[j].isUsed = true;
-            break;
-          }
-        }
-      }
-    }
-
-    for (int j = 0; j < curr_slice.size(); j++) {
-      if (curr_slice[j].event_type == IN) {
-        event_y = curr_slice[j].y;
-        for (int k = 0; k < cell_index_slice.size(); k++) {
-          if (event_y > cell_graph[cell_index_slice[k]].ceiling.back().y &&
-              event_y < cell_graph[cell_index_slice[k]].floor.back().y) {
-            rewrite = std::find(original_cell_index_slice.begin(),
-                                original_cell_index_slice.end(),
-                                cell_index_slice[k]) ==
-                      original_cell_index_slice.end();  // 若为true，则覆盖
-
-            min_dist = INT_MAX;
-            for (int m = 0; m < curr_slice.size(); m++) {
-              if (abs(curr_slice[m].y -
-                      cell_graph[cell_index_slice[k]].ceiling.back().y) <
-                  min_dist) {
-                min_dist =
-                    abs(curr_slice[m].y -
-                        cell_graph[cell_index_slice[k]].ceiling.back().y);
-                c_index = m;
-                c = Point2D(curr_slice[m].x, curr_slice[m].y);
-              }
-            }
-            curr_slice[c_index].isUsed = true;
-
-            min_dist = INT_MAX;
-            for (int n = 0; n < curr_slice.size(); n++) {
-              if (abs(curr_slice[n].y -
-                      cell_graph[cell_index_slice[k]].floor.back().y) <
-                  min_dist) {
-                min_dist = abs(curr_slice[n].y -
-                               cell_graph[cell_index_slice[k]].floor.back().y);
-                f_index = n;
-                f = Point2D(curr_slice[n].x, curr_slice[n].y);
-              }
-            }
-            curr_slice[f_index].isUsed = true;
-
-            curr_cell_idx = cell_index_slice[k];
-            ExecuteOpenOperation(cell_graph, curr_cell_idx,
-                                 Point2D(curr_slice[j].x, curr_slice[j].y), c,
-                                 f, rewrite);
-
-            if (!rewrite) {
-              cell_index_slice.erase(cell_index_slice.begin() + k);
-              sub_cell_index_slices.clear();
-              sub_cell_index_slices = {int(cell_graph.size() - 2),
-                                       int(cell_graph.size() - 1)};
-              cell_index_slice.insert(cell_index_slice.begin() + k,
-                                      sub_cell_index_slices.begin(),
-                                      sub_cell_index_slices.end());
-            } else {
-              cell_index_slice.insert(cell_index_slice.begin() + k + 1,
-                                      int(cell_graph.size() - 1));
-            }
-
-            curr_slice[j].isUsed = true;
-
-            break;
-          }
-        }
-      }
-      if (curr_slice[j].event_type == OUT) {
-        event_y = curr_slice[j].y;
-        for (int k = 1; k < cell_index_slice.size(); k++) {
-          if (event_y > cell_graph[cell_index_slice[k - 1]].ceiling.back().y &&
-              event_y < cell_graph[cell_index_slice[k]].floor.back().y) {
-            rewrite = std::find(original_cell_index_slice.begin(),
-                                original_cell_index_slice.end(),
-                                cell_index_slice[k - 1]) ==
-                      original_cell_index_slice.end();
-
-            min_dist = INT_MAX;
-            for (int m = 0; m < curr_slice.size(); m++) {
-              if (abs(curr_slice[m].y -
-                      cell_graph[cell_index_slice[k - 1]].ceiling.back().y) <
-                  min_dist) {
-                min_dist =
-                    abs(curr_slice[m].y -
-                        cell_graph[cell_index_slice[k - 1]].ceiling.back().y);
-                c_index = m;
-                c = Point2D(curr_slice[m].x, curr_slice[m].y);
-              }
-            }
-            curr_slice[c_index].isUsed = true;
-
-            min_dist = INT_MAX;
-            for (int n = 0; n < curr_slice.size(); n++) {
-              if (abs(curr_slice[n].y -
-                      cell_graph[cell_index_slice[k]].floor.back().y) <
-                  min_dist) {
-                min_dist = abs(curr_slice[n].y -
-                               cell_graph[cell_index_slice[k]].floor.back().y);
-                f_index = n;
-                f = Point2D(curr_slice[n].x, curr_slice[n].y);
-              }
-            }
-            curr_slice[f_index].isUsed = true;
-
-            top_cell_idx = cell_index_slice[k - 1];
-            bottom_cell_idx = cell_index_slice[k];
-
-            ExecuteCloseOperation(cell_graph, top_cell_idx, bottom_cell_idx, c,
-                                  f, rewrite);
-
-            if (!rewrite) {
-              cell_index_slice.erase(cell_index_slice.begin() + k - 1);
-              cell_index_slice.erase(cell_index_slice.begin() + k - 1);
-              cell_index_slice.insert(cell_index_slice.begin() + k - 1,
-                                      int(cell_graph.size() - 1));
-            } else {
-              cell_index_slice.erase(cell_index_slice.begin() + k);
-            }
-
-            curr_slice[j].isUsed = true;
-
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == IN_BOTTOM) {
-        event_y = curr_slice[j].y;
-        for (int k = 0; k < cell_index_slice.size(); k++) {
-          if (event_y > cell_graph[cell_index_slice[k]].ceiling.back().y &&
-              event_y < cell_graph[cell_index_slice[k]].floor.back().y) {
-            rewrite = std::find(original_cell_index_slice.begin(),
-                                original_cell_index_slice.end(),
-                                cell_index_slice[k]) ==
-                      original_cell_index_slice.end();
-
-            min_dist = INT_MAX;
-            for (int m = 0; m < curr_slice.size(); m++) {
-              if (abs(curr_slice[m].y -
-                      cell_graph[cell_index_slice[k]].ceiling.back().y) <
-                  min_dist) {
-                min_dist =
-                    abs(curr_slice[m].y -
-                        cell_graph[cell_index_slice[k]].ceiling.back().y);
-                c_index = m;
-                c = Point2D(curr_slice[m].x, curr_slice[m].y);
-              }
-            }
-            curr_slice[c_index].isUsed = true;
-
-            min_dist = INT_MAX;
-            for (int n = 0; n < curr_slice.size(); n++) {
-              if (abs(curr_slice[n].y -
-                      cell_graph[cell_index_slice[k]].floor.back().y) <
-                  min_dist) {
-                min_dist = abs(curr_slice[n].y -
-                               cell_graph[cell_index_slice[k]].floor.back().y);
-                f_index = n;
-                f = Point2D(curr_slice[n].x, curr_slice[n].y);
-              }
-            }
-            curr_slice[f_index].isUsed = true;
-
-            curr_cell_idx = cell_index_slice[k];
-            ExecuteOpenOperation(
-                cell_graph, curr_cell_idx,
-                Point2D(curr_slice[j - 1].x, curr_slice[j - 1].y),  // in top
-                Point2D(curr_slice[j].x, curr_slice[j].y),          // in bottom
-                c, f, rewrite);
-
-            if (!rewrite) {
-              cell_index_slice.erase(cell_index_slice.begin() + k);
-              sub_cell_index_slices.clear();
-              sub_cell_index_slices = {int(cell_graph.size() - 2),
-                                       int(cell_graph.size() - 1)};
-              cell_index_slice.insert(cell_index_slice.begin() + k,
-                                      sub_cell_index_slices.begin(),
-                                      sub_cell_index_slices.end());
-            } else {
-              cell_index_slice.insert(cell_index_slice.begin() + k + 1,
-                                      int(cell_graph.size() - 1));
-            }
-
-            curr_slice[j - 1].isUsed = true;
-            curr_slice[j].isUsed = true;
-
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == OUT_BOTTOM) {
-        event_y = curr_slice[j].y;
-        for (int k = 1; k < cell_index_slice.size(); k++) {
-          if (event_y > cell_graph[cell_index_slice[k - 1]].ceiling.back().y &&
-              event_y < cell_graph[cell_index_slice[k]].floor.back().y) {
-            rewrite = std::find(original_cell_index_slice.begin(),
-                                original_cell_index_slice.end(),
-                                cell_index_slice[k - 1]) ==
-                      original_cell_index_slice.end();
-
-            min_dist = INT_MAX;
-            for (int m = 0; m < curr_slice.size(); m++) {
-              if (abs(curr_slice[m].y -
-                      cell_graph[cell_index_slice[k - 1]].ceiling.back().y) <
-                  min_dist) {
-                min_dist =
-                    abs(curr_slice[m].y -
-                        cell_graph[cell_index_slice[k - 1]].ceiling.back().y);
-                c_index = m;
-                c = Point2D(curr_slice[m].x, curr_slice[m].y);
-              }
-            }
-            curr_slice[c_index].isUsed = true;
-
-            min_dist = INT_MAX;
-            for (int n = 0; n < curr_slice.size(); n++) {
-              if (abs(curr_slice[n].y -
-                      cell_graph[cell_index_slice[k]].floor.back().y) <
-                  min_dist) {
-                min_dist = abs(curr_slice[n].y -
-                               cell_graph[cell_index_slice[k]].floor.back().y);
-                f_index = n;
-                f = Point2D(curr_slice[n].x, curr_slice[n].y);
-              }
-            }
-            curr_slice[f_index].isUsed = true;
-
-            top_cell_idx = cell_index_slice[k - 1];
-            bottom_cell_idx = cell_index_slice[k];
-            ExecuteCloseOperation(cell_graph, top_cell_idx, bottom_cell_idx, c,
-                                  f, rewrite);
-
-            if (!rewrite) {
-              cell_index_slice.erase(cell_index_slice.begin() + k - 1);
-              cell_index_slice.erase(cell_index_slice.begin() + k - 1);
-              cell_index_slice.insert(cell_index_slice.begin() + k - 1,
-                                      int(cell_graph.size() - 1));
-            } else {
-              cell_index_slice.erase(cell_index_slice.begin() + k);
-            }
-
-            curr_slice[j - 1].isUsed = true;
-            curr_slice[j].isUsed = true;
-
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == INNER_IN) {
-        event_y = curr_slice[j].y;
-        for (int k = 1; k < cell_index_slice.size(); k++) {
-          if (event_y >= cell_graph[cell_index_slice[k - 1]].floor.back().y &&
-              event_y <= cell_graph[cell_index_slice[k]].ceiling.back().y) {
-            ExecuteInnerOpenOperation(
-                cell_graph,
-                Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_in
-            cell_index_slice.insert(cell_index_slice.begin() + k,
-                                    int(cell_graph.size() - 1));
-            curr_slice[j].isUsed = true;
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == INNER_IN_BOTTOM) {
-        event_y = curr_slice[j].y;
-        for (int k = 1; k < cell_index_slice.size(); k++) {
-          if (event_y >= cell_graph[cell_index_slice[k - 1]].floor.back().y &&
-              event_y <= cell_graph[cell_index_slice[k]].ceiling.back().y) {
-            ExecuteInnerOpenOperation(
-                cell_graph,
-                Point2D(curr_slice[j - 1].x,
-                        curr_slice[j - 1].y),                // inner_in_top,
-                Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_in_bottom
-
-            cell_index_slice.insert(cell_index_slice.begin() + k,
-                                    int(cell_graph.size() - 1));
-
-            curr_slice[j - 1].isUsed = true;
-            curr_slice[j].isUsed = true;
-
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == INNER_OUT) {
-        event_y = curr_slice[j].y;
-        for (int k = 0; k < cell_index_slice.size(); k++) {
-          if (event_y >= cell_graph[cell_index_slice[k]].ceiling.back().y &&
-              event_y <= cell_graph[cell_index_slice[k]].floor.back().y) {
-            curr_cell_idx = cell_index_slice[k];
-            ExecuteInnerCloseOperation(
-                cell_graph, curr_cell_idx,
-                Point2D(curr_slice[j].x, curr_slice[j].y));  // inner_out
-            cell_index_slice.erase(cell_index_slice.begin() + k);
-            curr_slice[j].isUsed = true;
-            break;
-          }
-        }
-      }
-
-      if (curr_slice[j].event_type == INNER_OUT_BOTTOM) {
-        event_y = curr_slice[j].y;
-        for (int k = 0; k < cell_index_slice.size(); k++) {
-          if (event_y >= cell_graph[cell_index_slice[k]].ceiling.back().y &&
-              event_y <= cell_graph[cell_index_slice[k]].floor.back().y) {
-            curr_cell_idx = cell_index_slice[k];
-            ExecuteInnerCloseOperation(
-                cell_graph, curr_cell_idx,
-                Point2D(curr_slice[j - 1].x, curr_slice[j - 1].y),
-                Point2D(curr_slice[j].x,
-                        curr_slice[j].y));  // inner_out_top, inner_out_bottom
-            cell_index_slice.erase(cell_index_slice.begin() + k);
-            curr_slice[j - 1].isUsed = true;
-            curr_slice[j].isUsed = true;
-            break;
-          }
-        }
-      }
-    }
-
-    for (int j = 0; j < curr_slice.size(); j++) {
-      if (curr_slice[j].event_type == CEILING) {
-        cell_counter = CountCells(curr_slice, j);
-        curr_cell_idx = cell_index_slice[cell_counter];
-        if (!curr_slice[j].isUsed) {
-          ExecuteCeilOperation(cell_graph, curr_cell_idx,
-                               Point2D(curr_slice[j].x, curr_slice[j].y));
-        }
-      }
-      if (curr_slice[j].event_type == FLOOR) {
-        cell_counter = CountCells(curr_slice, j);
-        curr_cell_idx = cell_index_slice[cell_counter];
-        if (!curr_slice[j].isUsed) {
-          ExecuteFloorOperation(cell_graph, curr_cell_idx,
-                                Point2D(curr_slice[j].x, curr_slice[j].y));
-        }
-      }
-    }
-  }
-}
-
 Point2D FindNextEntrance(const Point2D& curr_point, const CellNode& next_cell,
                          int& corner_indicator) {
   Point2D next_entrance;
@@ -2466,20 +662,20 @@ Point2D FindNextEntrance(const Point2D& curr_point, const CellNode& next_cell,
   if (abs(curr_point.x - front_x) < abs(curr_point.x - back_x)) {
     if (abs(curr_point.y - next_cell.ceiling.front().y) <
         abs(curr_point.y - next_cell.floor.front().y)) {
-      next_entrance = corner_points[TOPLEFT];
-      corner_indicator = TOPLEFT;
+      next_entrance = corner_points[TOP_LEFT];
+      corner_indicator = TOP_LEFT;
     } else {
-      next_entrance = corner_points[BOTTOMLEFT];
-      corner_indicator = BOTTOMLEFT;
+      next_entrance = corner_points[BOTTOM_LEFT];
+      corner_indicator = BOTTOM_LEFT;
     }
   } else {
     if (abs(curr_point.y - next_cell.ceiling.back().y) <
         abs(curr_point.y - next_cell.floor.back().y)) {
-      next_entrance = corner_points[TOPRIGHT];
-      corner_indicator = TOPRIGHT;
+      next_entrance = corner_points[TOP_RIGHT];
+      corner_indicator = TOP_RIGHT;
     } else {
-      next_entrance = corner_points[BOTTOMRIGHT];
-      corner_indicator = BOTTOMRIGHT;
+      next_entrance = corner_points[BOTTOM_RIGHT];
+      corner_indicator = BOTTOM_RIGHT;
     }
   }
 
@@ -2909,93 +1105,7 @@ cv::Mat1b PreprocessMap(const cv::Mat1b& original_map) {
   return map;
 }
 
-void ExtractRawContours(
-    const cv::Mat& original_map,
-    std::vector<std::vector<cv::Point>>& raw_wall_contours,
-    std::vector<std::vector<cv::Point>>& raw_obstacle_contours) {
-  cv::Mat map = original_map.clone();
-  cv::threshold(map, map, 128, 255, cv::THRESH_BINARY_INV);
-  cv::cvtColor(map, map, cv::COLOR_GRAY2BGR);
-
-  std::vector<std::vector<cv::Point>> contours;
-  cv::findContours(original_map.clone(), contours, cv::RETR_EXTERNAL,
-                   cv::CHAIN_APPROX_NONE);
-
-  std::vector<int> wall_cnt_indices(contours.size());
-  std::iota(wall_cnt_indices.begin(), wall_cnt_indices.end(), 0);
-
-  //    std::sort(wall_cnt_indices.begin(), wall_cnt_indices.end(),
-  //    [&contours](int lhs, int rhs){return contours[lhs].size() >
-  //    contours[rhs].size();});
-  std::sort(wall_cnt_indices.begin(), wall_cnt_indices.end(),
-            [&contours](int lhs, int rhs) {
-              return cv::contourArea(contours[lhs]) >
-                     cv::contourArea(contours[rhs]);
-            });
-
-  std::vector<cv::Point> raw_wall_contour = contours[wall_cnt_indices.front()];
-  raw_wall_contours = {raw_wall_contour};
-
-  cv::Mat mask = cv::Mat(original_map.size(), original_map.type(), 255);
-  cv::fillPoly(mask, raw_wall_contours, 0);
-
-  cv::Mat base = original_map.clone();
-  base += mask;
-  cv::threshold(base, base, 128, 255, cv::THRESH_BINARY_INV);
-
-  cv::findContours(base, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_NONE);
-
-  raw_obstacle_contours = contours;
-}
-
-void ExtractContours(const cv::Mat& original_map,
-                     std::vector<std::vector<cv::Point>>& wall_contours,
-                     std::vector<std::vector<cv::Point>>& obstacle_contours,
-                     int robot_radius = 0) {
-  ExtractRawContours(original_map, wall_contours, obstacle_contours);
-
-  if (robot_radius != 0) {
-    cv::Mat3b canvas = cv::Mat3b(original_map.size(), CV_8U);
-    canvas.setTo(cv::Scalar(255, 255, 255));
-
-    cv::fillPoly(canvas, wall_contours, cv::Scalar(0, 0, 0));
-    for (const auto& point : wall_contours.front()) {
-      cv::circle(canvas, point, robot_radius, cv::Scalar(255, 255, 255), -1);
-    }
-
-    cv::fillPoly(canvas, obstacle_contours, cv::Scalar(255, 255, 255));
-    for (const auto& obstacle_contour : obstacle_contours) {
-      for (const auto& point : obstacle_contour) {
-        cv::circle(canvas, point, robot_radius, cv::Scalar(255, 255, 255), -1);
-      }
-    }
-
-    cv::Mat canvas_;
-    cv::cvtColor(canvas, canvas_, cv::COLOR_BGR2GRAY);
-    cv::threshold(canvas_, canvas_, 200, 255, cv::THRESH_BINARY_INV);
-
-    cv::Mat kernel = cv::getStructuringElement(
-        cv::MORPH_RECT, cv::Size(robot_radius, robot_radius),
-        cv::Point(-1, -1));
-    cv::morphologyEx(canvas_, canvas_, cv::MORPH_OPEN, kernel);
-
-    ExtractRawContours(canvas_, wall_contours, obstacle_contours);
-
-    std::vector<cv::Point> processed_wall_contour;
-    cv::approxPolyDP(cv::Mat(wall_contours.front()), processed_wall_contour, 1,
-                     true);
-
-    std::vector<std::vector<cv::Point>> processed_obstacle_contours(
-        obstacle_contours.size());
-    for (int i = 0; i < obstacle_contours.size(); i++) {
-      cv::approxPolyDP(cv::Mat(obstacle_contours[i]),
-                       processed_obstacle_contours[i], 1, true);
-    }
-
-    wall_contours = {processed_wall_contour};
-    obstacle_contours = processed_obstacle_contours;
-  }
-}
+/*提取轮廓：考虑机器人半径*/
 
 PolygonList ConstructObstacles(
     const cv::Mat& original_map,
@@ -3072,32 +1182,6 @@ Polygon ConstructWall(const cv::Mat& original_map,
   }
 }
 
-std::vector<CellNode> ConstructCellGraph(
-    const cv::Mat& original_map,
-    const std::vector<std::vector<cv::Point>>& wall_contours,
-    const std::vector<std::vector<cv::Point>>& obstacle_contours,
-    const Polygon& wall, const PolygonList& obstacles) {
-  cv::Mat3b map = cv::Mat3b(original_map.size());
-  map.setTo(cv::Scalar(0, 0, 0));
-
-  cv::fillPoly(map, wall_contours, cv::Scalar(255, 255, 255));
-  cv::fillPoly(map, obstacle_contours, cv::Scalar(0, 0, 0));
-
-  std::vector<Event> wall_event_list = GenerateWallEventList(map, wall);
-  std::vector<Event> obstacle_event_list =
-      GenerateObstacleEventList(map, obstacles);
-  std::deque<std::deque<Event>> slice_list =
-      SliceListGenerator(wall_event_list, obstacle_event_list);
-
-  std::vector<CellNode> cell_graph;
-  std::vector<int> cell_index_slice;
-  std::vector<int> original_cell_index_slice;
-  ExecuteCellDecomposition(cell_graph, cell_index_slice,
-                           original_cell_index_slice, slice_list);
-
-  return cell_graph;
-}
-
 std::deque<std::deque<Point2D>> StaticPathPlanning(
     const cv::Mat& map, std::vector<CellNode>& cell_graph,
     const Point2D& start_point, int robot_radius, bool visualize_cells,
@@ -3107,21 +1191,21 @@ std::deque<std::deque<Point2D>> StaticPathPlanning(
 
   std::deque<std::deque<Point2D>> global_path;
   std::deque<Point2D> local_path;
-  int corner_indicator = TOPLEFT;
+  int corner_indicator = TOP_LEFT;
 
   int start_cell_index = DetermineCellIndex(cell_graph, start_point).front();
 
   std::deque<Point2D> init_path = WalkInsideCell(
       cell_graph[start_cell_index], start_point,
-      ComputeCellCornerPoints(cell_graph[start_cell_index])[TOPLEFT]);
+      ComputeCellCornerPoints(cell_graph[start_cell_index])[TOP_LEFT]);
   local_path.assign(init_path.begin(), init_path.end());
 
   std::deque<CellNode> cell_path =
       GetVisittingPath(cell_graph, start_cell_index);
 
   if (visualize_cells || visualize_path) {
-    cv::namedWindow("map", cv::WINDOW_NORMAL);
-    cv::imshow("map", vis_map);
+    cv::namedWindow("visualize_path", cv::WINDOW_NORMAL);
+    cv::imshow("visualize_path", vis_map);
   }
 
   if (visualize_cells) {
@@ -3867,29 +1951,29 @@ Polygon GetNewObstacle(const cv::Mat& map, Point2D origin, int front_direction,
 int GetCleaningDirection(const CellNode& cell, Point2D exit) {
   std::vector<Point2D> corner_points = ComputeCellCornerPoints(cell);
 
-  //    if(exit.x == corner_points[TOPLEFT].x && exit.y ==
-  //    corner_points[TOPLEFT].y)
+  //    if(exit.x == corner_points[TOP_LEFT].x && exit.y ==
+  //    corner_points[TOP_LEFT].y)
   //    {
   //        return LEFT;
   //    }
-  //    if(exit.x == corner_points[BOTTOMLEFT].x && exit.y ==
-  //    corner_points[BOTTOMLEFT].y)
+  //    if(exit.x == corner_points[BOTTOM_LEFT].x && exit.y ==
+  //    corner_points[BOTTOM_LEFT].y)
   //    {
   //        return LEFT;
   //    }
-  //    if(exit.x == corner_points[TOPRIGHT].x && exit.y ==
-  //    corner_points[TOPRIGHT].y)
+  //    if(exit.x == corner_points[TOP_RIGHT].x && exit.y ==
+  //    corner_points[TOP_RIGHT].y)
   //    {
   //        return RIGHT;
   //    }
-  //    if(exit.x == corner_points[BOTTOMRIGHT].x && exit.y ==
-  //    corner_points[BOTTOMRIGHT].y)
+  //    if(exit.x == corner_points[BOTTOM_RIGHT].x && exit.y ==
+  //    corner_points[BOTTOM_RIGHT].y)
   //    {
   //        return RIGHT;
   //    }
 
-  double dist_to_left = std::abs(exit.x - corner_points[TOPLEFT].x);
-  double dist_to_right = std::abs(exit.x = corner_points[TOPRIGHT].x);
+  double dist_to_left = std::abs(exit.x - corner_points[TOP_LEFT].x);
+  double dist_to_right = std::abs(exit.x = corner_points[TOP_RIGHT].x);
 
   if (dist_to_left >= dist_to_right) {
     return RIGHT;
@@ -4320,7 +2404,7 @@ std::vector<std::vector<cv::Point>> ConstructHandcraftedContours5() {
 void CheckObstaclePointType(cv::Mat& map, const Polygon& obstacle) {
   PolygonList obstacles = {obstacle};
 
-  std::vector<Event> event_list = GenerateObstacleEventList(map, obstacles);
+  std::vector<Event> event_list = bcd.GenerateObstacleEventList(map, obstacles);
 
   for (auto event : event_list) {
     if (event.event_type == IN) {
@@ -4398,7 +2482,7 @@ void CheckObstaclePointType(cv::Mat& map, const Polygon& obstacle) {
 }
 
 void CheckWallPointType(cv::Mat& map, const Polygon& wall) {
-  std::vector<Event> event_list = GenerateWallEventList(map, wall);
+  std::vector<Event> event_list = bcd.GenerateWallEventList(map, wall);
   for (auto event : event_list) {
     if (event.event_type == IN_EX) {
       std::cout << event.x << ", " << event.y << ", IN_EX" << std::endl;
@@ -4482,12 +2566,14 @@ void CheckPointType(const cv::Mat& map, const Polygon& wall,
   cv::cvtColor(vis_map, vis_map, cv::COLOR_GRAY2BGR);
 
   cv::namedWindow("map", cv::WINDOW_NORMAL);
-
+  std::cout
+      << "----------------------------CheckPointType-----------------------"
+      << std::endl;
   for (const auto& obstacle : obstacles) {
     CheckObstaclePointType(vis_map, obstacle);
     cv::imshow("map", vis_map);
     cv::waitKey(0);
-    std::cout << std::endl;
+    std::cout << "--------------------------" << std::endl;
   }
 
   CheckWallPointType(vis_map, wall);
@@ -4495,114 +2581,17 @@ void CheckPointType(const cv::Mat& map, const Polygon& wall,
   cv::waitKey(0);
 }
 
-void CheckSlicelist(const std::deque<std::deque<Event>>& slice_list) {
-  std::deque<Event> slice;
-  for (int i = 0; i < slice_list.size(); i++) {
-    slice = FilterSlice(slice_list[i]);
-    std::cout << "slice " << i << ": ";
-    for (const auto& event : slice) {
-      EventType type = event.event_type;
-      switch (type) {
-        case IN:
-          std::cout << "IN; ";
-          break;
-        case IN_TOP:
-          std::cout << "IN_TOP; ";
-          break;
-        case IN_BOTTOM:
-          std::cout << "IN_BOTTOM; ";
-          break;
-        case OUT:
-          std::cout << "OUT; ";
-          break;
-        case OUT_TOP:
-          std::cout << "OUT_TOP; ";
-          break;
-        case OUT_BOTTOM:
-          std::cout << "OUT_BOTTOM; ";
-          break;
-        case INNER_IN:
-          std::cout << "INNER_IN; ";
-          break;
-        case INNER_IN_TOP:
-          std::cout << "INNER_IN_TOP; ";
-          break;
-        case INNER_IN_BOTTOM:
-          std::cout << "INNER_IN_BOTTOM; ";
-          break;
-        case INNER_OUT:
-          std::cout << "INNER_OUT; ";
-          break;
-        case INNER_OUT_TOP:
-          std::cout << "INNER_OUT_TOP; ";
-          break;
-        case INNER_OUT_BOTTOM:
-          std::cout << "INNER_OUT_BOTTOM; ";
-          break;
-        case IN_EX:
-          std::cout << "IN_EX; ";
-          break;
-        case IN_TOP_EX:
-          std::cout << "IN_TOP_EX; ";
-          break;
-        case IN_BOTTOM_EX:
-          std::cout << "IN_BOTTOM_EX; ";
-          break;
-        case OUT_EX:
-          std::cout << "OUT_EX; ";
-          break;
-        case OUT_TOP_EX:
-          std::cout << "OUT_TOP_EX; ";
-          break;
-        case OUT_BOTTOM_EX:
-          std::cout << "OUT_BOTTOM_EX; ";
-          break;
-        case INNER_IN_EX:
-          std::cout << "INNER_IN_EX; ";
-          break;
-        case INNER_IN_TOP_EX:
-          std::cout << "INNER_IN_TOP_EX; ";
-          break;
-        case INNER_IN_BOTTOM_EX:
-          std::cout << "INNER_IN_BOTTOM_EX; ";
-          break;
-        case INNER_OUT_EX:
-          std::cout << "INNER_OUT_EX; ";
-          break;
-        case INNER_OUT_TOP_EX:
-          std::cout << "INNER_OUT_TOP_EX; ";
-          break;
-        case INNER_OUT_BOTTOM_EX:
-          std::cout << "INNER_OUT_BOTTOM_EX; ";
-          break;
-        case MIDDLE:
-          std::cout << "MIDDLE; ";
-          break;
-        case CEILING:
-          std::cout << "CEILING; ";
-          break;
-        case FLOOR:
-          std::cout << "FLOOR; ";
-          break;
-        case UNALLOCATED:
-          std::cout << "UNALLOCATED; ";
-          break;
-      }
-    }
-    std::cout << std::endl;
-  }
-}
-
+// 可视化提取的轮廓
 void CheckExtractedContours(
     const cv::Mat& map, const std::vector<std::vector<cv::Point>>& contours) {
-  cv::namedWindow("map", cv::WINDOW_NORMAL);
+  cv::namedWindow("CheckExtractedContours_map", cv::WINDOW_NORMAL);
 
   cv::Mat3b canvas = cv::Mat3b(map.size(), CV_8U);
   canvas.setTo(cv::Scalar(0, 0, 0));
 
   for (int i = 0; i <= contours.size() - 1; i++) {
     cv::drawContours(canvas, contours, i, cv::Scalar(255, 0, 0));
-    cv::imshow("map", canvas);
+    cv::imshow("CheckExtractedContours_map", canvas);
     cv::waitKey(0);
   }
 }
@@ -4613,7 +2602,8 @@ void CheckGeneratedCells(const cv::Mat& map,
   cv::cvtColor(vis_map, vis_map, cv::COLOR_GRAY2BGR);
 
   cv::namedWindow("map", cv::WINDOW_NORMAL);
-
+  std::cout << "***********CheckGeneratedCells********************************"
+            << std::endl;
   for (const auto& cell : cell_graph) {
     DrawCells(vis_map, cell, cv::Scalar(255, 0, 255));
     cv::imshow("map", vis_map);
@@ -4676,12 +2666,12 @@ void StaticPathPlanningExample1() {
 
   std::vector<std::vector<cv::Point>> obstacle_contours;
   std::vector<std::vector<cv::Point>> wall_contours;
-  ExtractContours(map, wall_contours, obstacle_contours, robot_radius);
+  map_sdk::ExtractContours(map, wall_contours, obstacle_contours, robot_radius);
 
   Polygon wall = ConstructWall(map, wall_contours.front());
   PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
 
-  std::vector<CellNode> cell_graph = ConstructCellGraph(
+  std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
       map, wall_contours, obstacle_contours, wall, obstacles);
 
   Point2D start = Point2D(map.cols / 2, map.rows / 2);
@@ -4691,7 +2681,7 @@ void StaticPathPlanningExample1() {
   std::deque<Point2D> path = FilterTrajectory(original_planning_path);
   CheckPathConsistency(path);
 
-  VisualizeTrajectory(map, path, robot_radius, PATH_MODE);
+  VisualizeTrajectory(map, path, robot_radius, ROBOT_MODE);
 
   Eigen::Vector2d curr_direction = {0, -1};
   std::vector<NavigationMessage> messages =
@@ -4707,12 +2697,12 @@ void StaticPathPlanningExample2() {
 
   std::vector<std::vector<cv::Point>> wall_contours;
   std::vector<std::vector<cv::Point>> obstacle_contours;
-  ExtractContours(map, wall_contours, obstacle_contours);
+  map_sdk::ExtractContours(map, wall_contours, obstacle_contours);
 
   Polygon wall = ConstructWall(map, wall_contours.front());
   PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
 
-  std::vector<CellNode> cell_graph = ConstructCellGraph(
+  std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
       map, wall_contours, obstacle_contours, wall, obstacles);
 
   Point2D start = cell_graph.front().ceiling.front();
@@ -4739,14 +2729,14 @@ void StaticPathPlanningExample3() {
 
   std::vector<std::vector<cv::Point>> obstacle_contours;
   std::vector<std::vector<cv::Point>> wall_contours;
-  ExtractContours(map, wall_contours, obstacle_contours);
+  map_sdk::ExtractContours(map, wall_contours, obstacle_contours);
   CheckExtractedContours(map, wall_contours);
   CheckExtractedContours(map, obstacle_contours);
 
   PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
   Polygon wall = ConstructWall(map, wall_contours.front());
 
-  std::vector<CellNode> cell_graph = ConstructCellGraph(
+  std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
       map, wall_contours, obstacle_contours, wall, obstacles);
   CheckPointType(map, wall, obstacles);
   CheckGeneratedCells(map, cell_graph);
@@ -4775,7 +2765,7 @@ void StaticPathPlanningExample4() {
 
   std::vector<std::vector<cv::Point>> obstacle_contours;
   std::vector<std::vector<cv::Point>> wall_contours;
-  ExtractContours(map, wall_contours, obstacle_contours);
+  map_sdk::ExtractContours(map, wall_contours, obstacle_contours);
   CheckExtractedContours(map, wall_contours);
   CheckExtractedContours(map, obstacle_contours);
 
@@ -4788,18 +2778,18 @@ void StaticPathPlanningExample4() {
   cv::fillPoly(map_, wall_contours, cv::Scalar(255, 255, 255));
   cv::fillPoly(map_, obstacle_contours, cv::Scalar(0, 0, 0));
 
-  std::vector<Event> wall_event_list = GenerateWallEventList(map_, wall);
+  std::vector<Event> wall_event_list = bcd.GenerateWallEventList(map_, wall);
   std::vector<Event> obstacle_event_list =
-      GenerateObstacleEventList(map_, obstacles);
+      bcd.GenerateObstacleEventList(map_, obstacles);
   std::deque<std::deque<Event>> slice_list =
-      SliceListGenerator(wall_event_list, obstacle_event_list);
-  CheckSlicelist(slice_list);
+      bcd.SliceListGenerator(wall_event_list, obstacle_event_list);
+  bcd.CheckSlicelist(slice_list);
 
   std::vector<CellNode> cell_graph;
   std::vector<int> cell_index_slice;
   std::vector<int> original_cell_index_slice;
-  ExecuteCellDecomposition(cell_graph, cell_index_slice,
-                           original_cell_index_slice, slice_list);
+  bcd.ExecuteCellDecomposition(cell_graph, cell_index_slice,
+                               original_cell_index_slice, slice_list);
   CheckPointType(map, wall, obstacles);
   CheckGeneratedCells(map, cell_graph);
 
@@ -4827,14 +2817,14 @@ void StaticPathPlanningExample5() {
 
   std::vector<std::vector<cv::Point>> obstacle_contours;
   std::vector<std::vector<cv::Point>> wall_contours;
-  ExtractContours(map, wall_contours, obstacle_contours);
+  map_sdk::ExtractContours(map, wall_contours, obstacle_contours);
   CheckExtractedContours(map, wall_contours);
   CheckExtractedContours(map, obstacle_contours);
 
   PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
   Polygon wall = ConstructWall(map, wall_contours.front());
 
-  std::vector<CellNode> cell_graph = ConstructCellGraph(
+  std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
       map, wall_contours, obstacle_contours, wall, obstacles);
   CheckPointType(map, wall, obstacles);
   CheckGeneratedCells(map, cell_graph);
@@ -4852,7 +2842,7 @@ void StaticPathPlanningExample5() {
 }
 
 void StaticPathPlanningExample6() {
-  int robot_radius = 5;
+  int robot_radius = 25;
 
   cv::Mat1b map = cv::Mat1b(cv::Size(600, 600), CV_8U);
   map.setTo(0);
@@ -4866,27 +2856,46 @@ void StaticPathPlanningExample6() {
 
   std::vector<std::vector<cv::Point>> obstacle_contours;
   std::vector<std::vector<cv::Point>> wall_contours;
-  ExtractContours(map, wall_contours, obstacle_contours);
+  map_sdk::ExtractContours(map, wall_contours, obstacle_contours);
+  // wall_contours and obstacle_contours visualization
+  std::cout << "****************************************check contours, "
+               "wall_contours...."
+            << std::endl;
   CheckExtractedContours(map, wall_contours);
+  std::cout << "***********************************check contours, "
+               "obstacle_contours------"
+            << std::endl;
   CheckExtractedContours(map, obstacle_contours);
 
+  cv::imwrite("sssss.png", map);
   PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
+
+  // Debug print
+  cv::imshow("ConstructObstacles_map", map);
+  cv::waitKey(0);
+
   Polygon wall = ConstructWall(map, wall_contours.front());
 
-  std::vector<CellNode> cell_graph = ConstructCellGraph(
+  // Debug print
+  cv::imshow("ConstructWall_map", map);
+  cv::waitKey(0);
+
+  std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
       map, wall_contours, obstacle_contours, wall, obstacles);
   CheckPointType(map, wall, obstacles);
   CheckGeneratedCells(map, cell_graph);
 
   Point2D start = cell_graph.front().ceiling.front();
   std::deque<std::deque<Point2D>> original_planning_path =
-      StaticPathPlanning(map, cell_graph, start, robot_radius, false, false);
+      StaticPathPlanning(map, cell_graph, start, robot_radius, true, true);
   CheckPathNodes(original_planning_path);
 
   std::deque<Point2D> path = FilterTrajectory(original_planning_path);
   CheckPathConsistency(path);
 
   int time_interval = 1;
+  std::cout << "************VisualizeTrajectory**************************"
+            << std::endl;
   VisualizeTrajectory(map, path, robot_radius, PATH_MODE, time_interval);
 }
 
@@ -4894,15 +2903,15 @@ void StaticPathPlanningExample6() {
 void DynamicPathPlanningExample1() {}
 
 void TestAllExamples() {
-  StaticPathPlanningExample1();
+  // StaticPathPlanningExample1();
 
-  StaticPathPlanningExample2();
+  // StaticPathPlanningExample2();
 
-  StaticPathPlanningExample3();
+  // StaticPathPlanningExample3();
 
-  StaticPathPlanningExample4();
+  // StaticPathPlanningExample4();
 
-  StaticPathPlanningExample5();
+  // StaticPathPlanningExample5();
 
   StaticPathPlanningExample6();
 }
