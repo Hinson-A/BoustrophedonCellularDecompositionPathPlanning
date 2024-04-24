@@ -20,6 +20,9 @@ add_library(libPathPlanning
     bcd_algorithm/src/bcd.cpp
     bcd_algorithm/src/common_data.cpp
     bcd_algorithm/src/map_sdk.cpp
+    bcd_algorithm/src/test_function.cpp
+    bcd_algorithm/src/visualization.cpp
+    bcd_algorithm/src/cover_planning.cpp
     )
 target_link_libraries(libPathPlanning ${OpenCV_LIBS} )
 

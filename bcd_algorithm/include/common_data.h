@@ -82,6 +82,9 @@ struct Event {
 };
 
 typedef std::deque<Point2D> Edge;
+typedef std::vector<Point2D> Polygon;
+typedef std::vector<Polygon> PolygonList;
+
 // CellNode 结构体用于表示路径规划中的单元格节点。
 struct CellNode {
   // 构造函数初始化所有成员变量

@@ -10,644 +10,35 @@
 #include <vector>
 
 #include "bcd.h"
+#include "cover_planning.h"
 #include "map_sdk.h"
-// #include "common_data.h"
+#include "math_utils.h"
+#include "navigation_message.h"
+#include "test_function.h"
+#include "visualization.h"
 
 using namespace CommonData;
+using namespace cover_planning;
+using namespace math_utils;
 
-BoustrophedonCellDecomposition bcd;
-/** 路径规划功能函数 **/
+BoustrophedonCellDecomposition bcd;  //牛耕分解对象
 
-int WrappedIndex(int index, int list_length) {
-  int wrapped_index = (index % list_length + list_length) % list_length;
-  return wrapped_index;
-}
+// 注意：在实际使用中，需要在开始遍历之前初始化所有单元格的isVisited为false，parentIndex为INT_MAX。
 
-/** 深度优先搜索遍历邻接图 **/
-void WalkThroughGraph(std::vector<CellNode>& cell_graph, int cell_index,
-                      int& unvisited_counter, std::deque<CellNode>& path) {
-  if (!cell_graph[cell_index].isVisited) {
-    cell_graph[cell_index].isVisited = true;
-    unvisited_counter--;
-  }
-  path.emplace_front(cell_graph[cell_index]);
-
-  //    for debugging
-  //    std::cout<< "cell: " <<cell_graph[cell_index].cellIndex<<std::endl;
-  //
-
-  CellNode neighbor;
-  int neighbor_idx = INT_MAX;
-
-  for (int i = 0; i < cell_graph[cell_index].neighbor_indices.size(); i++) {
-    neighbor = cell_graph[cell_graph[cell_index].neighbor_indices[i]];
-    neighbor_idx = cell_graph[cell_index].neighbor_indices[i];
-    if (!neighbor.isVisited) {
-      break;
-    }
-  }
-
-  if (!neighbor.isVisited)  // unvisited neighbor found
-  {
-    cell_graph[neighbor_idx].parentIndex = cell_graph[cell_index].cellIndex;
-    WalkThroughGraph(cell_graph, neighbor_idx, unvisited_counter, path);
-  } else  // unvisited neighbor not found
-  {
-    if (cell_graph[cell_index].parentIndex ==
-        INT_MAX)  // cannot go on back-tracking
-    {
-      return;
-    } else if (unvisited_counter == 0) {
-      return;
-    } else {
-      WalkThroughGraph(cell_graph, cell_graph[cell_index].parentIndex,
-                       unvisited_counter, path);
-    }
-  }
-}
-
-std::deque<CellNode> GetVisittingPath(std::vector<CellNode>& cell_graph,
-                                      int first_cell_index) {
-  std::deque<CellNode> visitting_path;
+std::deque<CellNode> GetVisitingPath(std::vector<CellNode>& cell_graph,
+                                     int first_cell_index) {
+  std::deque<CellNode> visiting_path;
 
   if (cell_graph.size() == 1) {
-    visitting_path.emplace_back(cell_graph.front());
+    visiting_path.emplace_back(cell_graph.front());
   } else {
     int unvisited_counter = cell_graph.size();
     WalkThroughGraph(cell_graph, first_cell_index, unvisited_counter,
-                     visitting_path);
-    std::reverse(visitting_path.begin(), visitting_path.end());
+                     visiting_path);
+    std::reverse(visiting_path.begin(), visiting_path.end());
   }
 
-  return visitting_path;
-}
-
-std::vector<Point2D> ComputeCellCornerPoints(const CellNode& cell) {
-  Point2D topleft = cell.ceiling.front();
-  Point2D bottomleft = cell.floor.front();
-  Point2D bottomright = cell.floor.back();
-  Point2D topright = cell.ceiling.back();
-
-  // 按照TOPLEFT、BOTTOMLEFT、BOTTOMRIGHT、TOPRIGHT的顺序储存corner
-  // points（逆时针）
-  std::vector<Point2D> corner_points = {topleft, bottomleft, bottomright,
-                                        topright};
-
-  return corner_points;
-}
-
-std::vector<int> DetermineCellIndex(std::vector<CellNode>& cell_graph,
-                                    const Point2D& point) {
-  std::vector<int> cell_index;
-
-  for (int i = 0; i < cell_graph.size(); i++) {
-    for (int j = 0; j < cell_graph[i].ceiling.size(); j++) {
-      if (point.x == cell_graph[i].ceiling[j].x &&
-          point.y >= cell_graph[i].ceiling[j].y &&
-          point.y <= cell_graph[i].floor[j].y) {
-        cell_index.emplace_back(int(i));
-      }
-    }
-  }
-  return cell_index;
-}
-
-std::deque<Point2D> GetBoustrophedonPath(std::vector<CellNode>& cell_graph,
-                                         CellNode cell, int corner_indicator,
-                                         int robot_radius) {
-  int delta, increment;
-
-  std::deque<Point2D> path;
-
-  std::vector<Point2D> corner_points = ComputeCellCornerPoints(cell);
-
-  std::vector<Point2D> ceiling, floor;
-  ceiling.assign(cell.ceiling.begin(), cell.ceiling.end());
-  floor.assign(cell.floor.begin(), cell.floor.end());
-
-  if (cell_graph[cell.cellIndex].isCleaned) {
-    if (corner_indicator == TOP_LEFT) {
-      path.emplace_back(corner_points[TOP_LEFT]);
-    }
-    if (corner_indicator == TOP_RIGHT) {
-      path.emplace_back(corner_points[TOP_RIGHT]);
-    }
-    if (corner_indicator == BOTTOM_LEFT) {
-      path.emplace_back(corner_points[BOTTOM_LEFT]);
-    }
-    if (corner_indicator == BOTTOM_RIGHT) {
-      path.emplace_back(corner_points[BOTTOM_RIGHT]);
-    }
-  } else {
-    if (corner_indicator == TOP_LEFT) {
-      int x, y, y_start, y_end;
-      bool reverse = false;
-
-      for (int i = 0; i < ceiling.size(); i = i + (robot_radius + 1)) {
-        x = ceiling[i].x;
-
-        if (!reverse) {
-          y_start = ceiling[i].y;
-          y_end = floor[i].y;
-
-          for (y = y_start; y <= y_end; y++) {
-            path.emplace_back(Point2D(x, y));
-          }
-
-          if ((std::abs(floor[i + 1].y - floor[i].y) >= 2) &&
-              (i + 1 < floor.size())) {
-            delta = floor[i + 1].y - floor[i].y;
-            increment = delta / abs(delta);
-            for (int k = 1; k <= abs(delta); k++) {
-              path.emplace_back(
-                  Point2D(floor[i].x, floor[i].y + increment * (k)));
-            }
-          }
-
-          if (robot_radius != 0) {
-            for (int j = 1; j <= robot_radius + 1; j++) {
-              // 沿着floor从左往右
-              if (x + j >= floor.back().x) {
-                i = i - (robot_radius - (j - 1));
-                break;
-              }
-
-              // 提前转
-              else if ((floor[i + (j)].y - floor[i + (j + 1)].y >= 2) &&
-                       (j <= robot_radius + 1) && (j + 1 <= robot_radius + 1)) {
-                delta = floor[i + (j + 1)].y - floor[i + (j)].y;
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      floor[i + (j)].x, floor[i + (j)].y + increment * (k)));
-                }
-              }
-              // 滞后转
-              else if ((floor[i + (j + 1)].y - floor[i + (j)].y >= 2) &&
-                       (j + 1 <= robot_radius + 1) && (j <= robot_radius + 1)) {
-                path.emplace_back(Point2D(floor[i + (j)].x, floor[i + (j)].y));
-
-                delta = floor[i + (j + 1)].y - floor[i + (j)].y;
-
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(floor[i + (j + 1)].x,
-                                            cell.floor[i + (j + 1)].y -
-                                                abs(delta) + increment * (k)));
-                }
-              } else {
-                path.emplace_back(floor[i + (j)]);
-              }
-            }
-          }
-
-          reverse = !reverse;
-        } else {
-          y_start = floor[i].y;
-          y_end = ceiling[i].y;
-
-          for (y = y_start; y >= y_end; y--) {
-            path.emplace_back(Point2D(x, y));
-          }
-
-          if ((std::abs(ceiling[i + 1].y - ceiling[i].y) >= 2) &&
-              (i + 1 < ceiling.size())) {
-            delta = ceiling[i + 1].y - ceiling[i].y;
-            increment = delta / abs(delta);
-            for (int k = 1; k <= abs(delta); k++) {
-              path.emplace_back(
-                  Point2D(ceiling[i].x, ceiling[i].y + increment * (k)));
-            }
-          }
-
-          if (robot_radius != 0) {
-            for (int j = 1; j <= robot_radius + 1; j++) {
-              // 沿着ceiling从左往右
-              if (x + j >= ceiling.back().x) {
-                i = i - (robot_radius - (j - 1));
-                break;
-              }
-
-              // 提前转
-              else if ((ceiling[i + (j + 1)].y - ceiling[i + (j)].y >= 2) &&
-                       (j + 1 <= robot_radius + 1) && (j <= robot_radius + 1)) {
-                delta = ceiling[i + (j + 1)].y - ceiling[i + (j)].y;
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      ceiling[i + j].x, ceiling[i + j].y + increment * (k)));
-                }
-              }
-              // 滞后转
-              else if ((ceiling[i + (j)].y - ceiling[i + (j + 1)].y >= 2) &&
-                       (j <= robot_radius + 1) && (j + 1 <= robot_radius + 1)) {
-                path.emplace_back(ceiling[i + (j)]);
-
-                delta = ceiling[i + (j + 1)].y - ceiling[i + (j)].y;
-
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      ceiling[i + (j + 1)].x,
-                      ceiling[i + (j + 1)].y + abs(delta) + increment * (k)));
-                }
-              } else {
-                path.emplace_back(ceiling[i + j]);
-              }
-            }
-          }
-
-          reverse = !reverse;
-        }
-      }
-    }
-
-    if (corner_indicator == TOP_RIGHT) {
-      int x = 0, y = 0, y_start = 0, y_end = 0;
-      bool reverse = false;
-
-      for (int i = ceiling.size() - 1; i >= 0; i = i - (robot_radius + 1)) {
-        x = ceiling[i].x;
-
-        if (!reverse) {
-          y_start = ceiling[i].y;
-          y_end = floor[i].y;
-
-          for (y = y_start; y <= y_end; y++) {
-            path.emplace_back(Point2D(x, y));
-          }
-
-          if ((std::abs(floor[i - 1].y - floor[i].y) >= 2) && (i - 1 >= 0)) {
-            delta = floor[i - 1].y - floor[i].y;
-            increment = delta / abs(delta);
-            for (int k = 1; k <= abs(delta); k++) {
-              path.emplace_back(
-                  Point2D(floor[i].x, floor[i].y + increment * (k)));
-            }
-          }
-
-          if (robot_radius != 0) {
-            for (int j = 1; j <= robot_radius + 1; j++) {
-              // 沿着floor从右往左
-              if (x - j <= floor.front().x) {
-                i = i + (robot_radius - (j - 1));
-                break;
-              }
-              // 提前转
-              else if ((floor[i - (j)].y - floor[i - (j + 1)].y >= 2) &&
-                       (j <= robot_radius + 1) && (j + 1 <= robot_radius + 1)) {
-                delta = floor[i - (j + 1)].y - floor[i - (j)].y;
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      floor[i - (j)].x, floor[i - (j)].y + increment * (k)));
-                }
-              }
-              // 滞后转
-              else if ((floor[i - (j + 1)].y - floor[i - (j)].y >= 2) &&
-                       (j + 1 <= robot_radius + 1) && (j <= robot_radius + 1)) {
-                path.emplace_back(Point2D(floor[i - (j)].x, floor[i - (j)].y));
-
-                delta = floor[i - (j + 1)].y - floor[i - (j)].y;
-
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(floor[i - (j + 1)].x,
-                                            cell.floor[i - (j + 1)].y -
-                                                abs(delta) + increment * (k)));
-                }
-              } else {
-                path.emplace_back(floor[i - (j)]);
-              }
-            }
-          }
-
-          reverse = !reverse;
-        } else {
-          y_start = floor[i].y;
-          y_end = ceiling[i].y;
-
-          for (y = y_start; y >= y_end; y--) {
-            path.emplace_back(Point2D(x, y));
-          }
-
-          if ((std::abs(ceiling[i - 1].y - ceiling[i].y) >= 2) &&
-              (i - 1 >= 0)) {
-            delta = ceiling[i - 1].y - ceiling[i].y;
-            increment = delta / abs(delta);
-            for (int k = 1; k <= abs(delta); k++) {
-              path.emplace_back(
-                  Point2D(ceiling[i].x, ceiling[i].y + increment * (k)));
-            }
-          }
-
-          if (robot_radius != 0) {
-            for (int j = 1; j <= robot_radius + 1; j++) {
-              // 沿着ceiling从右往左
-              if (x - j <= ceiling.front().x) {
-                i = i + (robot_radius - (j - 1));
-                break;
-              }
-              // 提前转
-              else if ((ceiling[i - (j + 1)].y - ceiling[i - (j)].y >= 2) &&
-                       (j + 1 <= robot_radius + 1) && (j <= robot_radius + 1)) {
-                delta = ceiling[i - (j + 1)].y - ceiling[i - (j)].y;
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      ceiling[i - j].x, ceiling[i - j].y + increment * (k)));
-                }
-              }
-              // 滞后转
-              else if ((ceiling[i - (j)].y - ceiling[i - (j + 1)].y >= 2) &&
-                       (j <= robot_radius + 1) && (j + 1 <= robot_radius + 1)) {
-                path.emplace_back(ceiling[i - (j)]);
-
-                delta = ceiling[i - (j + 1)].y - ceiling[i - (j)].y;
-
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      ceiling[i - (j + 1)].x,
-                      ceiling[i - (j + 1)].y + abs(delta) + increment * (k)));
-                }
-              } else {
-                path.emplace_back(ceiling[i - j]);
-              }
-            }
-          }
-
-          reverse = !reverse;
-        }
-      }
-    }
-
-    if (corner_indicator == BOTTOM_LEFT) {
-      int x = 0, y = 0, y_start = 0, y_end = 0;
-      bool reverse = false;
-
-      for (int i = 0; i < ceiling.size(); i = i + (robot_radius + 1)) {
-        x = ceiling[i].x;
-
-        if (!reverse) {
-          y_start = floor[i].y;
-          y_end = ceiling[i].y;
-
-          for (y = y_start; y >= y_end; y--) {
-            path.emplace_back(Point2D(x, y));
-          }
-
-          if ((std::abs(ceiling[i + 1].y - ceiling[i].y) >= 2) &&
-              (i + 1 < ceiling.size())) {
-            delta = ceiling[i + 1].y - ceiling[i].y;
-            increment = delta / abs(delta);
-            for (int k = 1; k <= abs(delta); k++) {
-              path.emplace_back(
-                  Point2D(ceiling[i].x, ceiling[i].y + increment * (k)));
-            }
-          }
-
-          if (robot_radius != 0) {
-            for (int j = 1; j <= robot_radius + 1; j++) {
-              // 沿着ceiling从左往右
-              if (x + j >= ceiling.back().x) {
-                i = i - (robot_radius - (j - 1));
-                break;
-              }
-              // 提前转
-              else if ((ceiling[i + (j + 1)].y - ceiling[i + (j)].y >= 2) &&
-                       (j + 1 <= robot_radius + 1) && (j <= robot_radius + 1)) {
-                delta = ceiling[i + (j + 1)].y - ceiling[i + (j)].y;
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      ceiling[i + j].x, ceiling[i + j].y + increment * (k)));
-                }
-              }
-              // 滞后转
-              else if ((ceiling[i + (j)].y - ceiling[i + (j + 1)].y >= 2) &&
-                       (j <= robot_radius + 1) && (j + 1 <= robot_radius + 1)) {
-                path.emplace_back(ceiling[i + (j)]);
-
-                delta = ceiling[i + (j + 1)].y - ceiling[i + (j)].y;
-
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      ceiling[i + (j + 1)].x,
-                      ceiling[i + (j + 1)].y + abs(delta) + increment * (k)));
-                }
-              } else {
-                path.emplace_back(ceiling[i + j]);
-              }
-            }
-          }
-
-          reverse = !reverse;
-        } else {
-          y_start = ceiling[i].y;
-          y_end = floor[i].y;
-
-          for (y = y_start; y <= y_end; y++) {
-            path.emplace_back(Point2D(x, y));
-          }
-
-          if ((std::abs(floor[i + 1].y - floor[i].y) >= 2) &&
-              (i + 1 < floor.size())) {
-            delta = floor[i + 1].y - floor[i].y;
-            increment = delta / abs(delta);
-            for (int k = 1; k <= abs(delta); k++) {
-              path.emplace_back(
-                  Point2D(floor[i].x, floor[i].y + increment * (k)));
-            }
-          }
-
-          if (robot_radius != 0) {
-            for (int j = 1; j <= robot_radius + 1; j++) {
-              // 沿着floor从左往右
-              if (x + j >= floor.back().x) {
-                i = i - (robot_radius - (j - 1));
-                break;
-              }
-
-              // 提前转
-              else if ((floor[i + (j)].y - floor[i + (j + 1)].y >= 2) &&
-                       (j <= robot_radius + 1) && (j + 1 <= robot_radius + 1)) {
-                delta = floor[i + (j + 1)].y - floor[i + (j)].y;
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      floor[i + (j)].x, floor[i + (j)].y + increment * (k)));
-                }
-              }
-              // 滞后转
-              else if ((floor[i + (j + 1)].y - floor[i + (j)].y >= 2) &&
-                       (j + 1 <= robot_radius + 1) && (j <= robot_radius + 1)) {
-                path.emplace_back(Point2D(floor[i + (j)].x, floor[i + (j)].y));
-
-                delta = floor[i + (j + 1)].y - floor[i + (j)].y;
-
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(floor[i + (j + 1)].x,
-                                            cell.floor[i + (j + 1)].y -
-                                                abs(delta) + increment * (k)));
-                }
-              } else {
-                path.emplace_back(floor[i + (j)]);
-              }
-            }
-          }
-
-          reverse = !reverse;
-        }
-      }
-    }
-
-    if (corner_indicator == BOTTOM_RIGHT) {
-      int x = 0, y = 0, y_start = 0, y_end = 0;
-      bool reverse = false;
-
-      for (int i = ceiling.size() - 1; i >= 0; i = i - (robot_radius + 1)) {
-        x = ceiling[i].x;
-
-        if (!reverse) {
-          y_start = floor[i].y;
-          y_end = ceiling[i].y;
-
-          for (y = y_start; y >= y_end; y--) {
-            path.emplace_back(Point2D(x, y));
-          }
-
-          if ((std::abs(ceiling[i - 1].y - ceiling[i].y) >= 2) &&
-              (i - 1 >= 0)) {
-            delta = ceiling[i - 1].y - ceiling[i].y;
-            increment = delta / abs(delta);
-            for (int k = 1; k <= abs(delta); k++) {
-              path.emplace_back(
-                  Point2D(ceiling[i].x, ceiling[i].y + increment * (k)));
-            }
-          }
-
-          if (robot_radius != 0) {
-            for (int j = 1; j <= robot_radius + 1; j++) {
-              // 沿着ceiling从右往左
-              if (x - j <= ceiling.front().x) {
-                i = i + (robot_radius - (j - 1));
-                break;
-              }
-              // 提前转
-              else if ((ceiling[i - (j + 1)].y - ceiling[i - (j)].y >= 2) &&
-                       (j + 1 <= robot_radius + 1) && (j <= robot_radius + 1)) {
-                delta = ceiling[i - (j + 1)].y - ceiling[i - (j)].y;
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      ceiling[i - j].x, ceiling[i - j].y + increment * (k)));
-                }
-              }
-              // 滞后转
-              else if ((ceiling[i - (j)].y - ceiling[i - (j + 1)].y >= 2) &&
-                       (j <= robot_radius + 1) && (j + 1 <= robot_radius + 1)) {
-                path.emplace_back(ceiling[i - (j)]);
-
-                delta = ceiling[i - (j + 1)].y - ceiling[i - (j)].y;
-
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      ceiling[i - (j + 1)].x,
-                      ceiling[i - (j + 1)].y + abs(delta) + increment * (k)));
-                }
-              } else {
-                path.emplace_back(ceiling[i - j]);
-              }
-            }
-          }
-
-          reverse = !reverse;
-        } else {
-          y_start = ceiling[i].y;
-          y_end = floor[i].y;
-
-          for (y = y_start; y <= y_end; y++) {
-            path.emplace_back(Point2D(x, y));
-          }
-
-          if ((std::abs(floor[i - 1].y - floor[i].y) >= 2) && (i - 1 >= 0)) {
-            delta = floor[i - 1].y - floor[i].y;
-            increment = delta / abs(delta);
-            for (int k = 1; k <= abs(delta); k++) {
-              path.emplace_back(
-                  Point2D(floor[i].x, floor[i].y + increment * (k)));
-            }
-          }
-
-          if (robot_radius != 0) {
-            for (int j = 1; j <= robot_radius + 1; j++) {
-              // 沿着floor从右往左
-              if (x - j <= floor.front().x) {
-                i = i + (robot_radius - (j - 1));
-                break;
-              }
-              // 提前转
-              else if ((floor[i - (j)].y - floor[i - (j + 1)].y >= 2) &&
-                       (j <= robot_radius + 1) && (j + 1 <= robot_radius + 1)) {
-                delta = floor[i - (j + 1)].y - floor[i - (j)].y;
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(
-                      floor[i - (j)].x, floor[i - (j)].y + increment * (k)));
-                }
-              }
-              // 滞后转
-              else if ((floor[i - (j + 1)].y - floor[i - (j)].y >= 2) &&
-                       (j + 1 <= robot_radius + 1) && (j <= robot_radius + 1)) {
-                path.emplace_back(Point2D(floor[i - (j)].x, floor[i - (j)].y));
-
-                delta = floor[i - (j + 1)].y - floor[i - (j)].y;
-
-                increment = delta / abs(delta);
-                for (int k = 0; k <= abs(delta); k++) {
-                  path.emplace_back(Point2D(floor[i - (j + 1)].x,
-                                            cell.floor[i - (j + 1)].y -
-                                                abs(delta) + increment * (k)));
-                }
-              } else {
-                path.emplace_back(floor[i - (j)]);
-              }
-            }
-          }
-
-          reverse = !reverse;
-        }
-      }
-    }
-  }
-
-  return path;
-}
-
-void DrawCells(cv::Mat& map, const CellNode& cell,
-               cv::Scalar color = cv::Scalar(100, 100, 100)) {
-  std::cout << "cell " << cell.cellIndex << ": " << std::endl;
-  std::cout << "cell's ceiling points: " << cell.ceiling.size() << std::endl;
-  std::cout << "cell's floor points: " << cell.floor.size() << std::endl;
-
-  for (const auto& ceiling_point : cell.ceiling) {
-    map.at<cv::Vec3b>(ceiling_point.y, ceiling_point.x) =
-        cv::Vec3b(uchar(color[0]), uchar(color[1]), uchar(color[2]));
-  }
-
-  for (const auto& floor_point : cell.floor) {
-    map.at<cv::Vec3b>(floor_point.y, floor_point.x) =
-        cv::Vec3b(uchar(color[0]), uchar(color[1]), uchar(color[2]));
-  }
-
-  cv::line(map, cv::Point(cell.ceiling.front().x, cell.ceiling.front().y),
-           cv::Point(cell.floor.front().x, cell.floor.front().y), color);
-  cv::line(map, cv::Point(cell.ceiling.back().x, cell.ceiling.back().y),
-           cv::Point(cell.floor.back().x, cell.floor.back().y), color);
+  return visiting_path;
 }
 
 Point2D FindNextEntrance(const Point2D& curr_point, const CellNode& next_cell,
@@ -680,174 +71,6 @@ Point2D FindNextEntrance(const Point2D& curr_point, const CellNode& next_cell,
   }
 
   return next_entrance;
-}
-
-std::deque<Point2D> WalkInsideCell(CellNode cell, const Point2D& start,
-                                   const Point2D& end) {
-  std::deque<Point2D> inner_path = {start};
-
-  int start_ceiling_index_offset = start.x - cell.ceiling.front().x;
-  int first_ceiling_delta_y =
-      cell.ceiling[start_ceiling_index_offset].y - start.y;
-  int end_ceiling_index_offset = end.x - cell.ceiling.front().x;
-  int second_ceiling_delta_y = end.y - cell.ceiling[end_ceiling_index_offset].y;
-
-  int start_floor_index_offset = start.x - cell.floor.front().x;
-  int first_floor_delta_y = cell.floor[start_floor_index_offset].y - start.y;
-  int end_floor_index_offset = end.x - cell.floor.front().x;
-  int second_floor_delta_y = end.y - cell.floor[end_floor_index_offset].y;
-
-  if ((abs(first_ceiling_delta_y) + abs(second_ceiling_delta_y)) <
-      (abs(first_floor_delta_y) + abs(second_floor_delta_y)))  // to ceiling
-  {
-    int first_increment_y = 0;
-    if (first_ceiling_delta_y != 0) {
-      first_increment_y = first_ceiling_delta_y / abs(first_ceiling_delta_y);
-
-      for (int i = 1; i <= abs(first_ceiling_delta_y); i++) {
-        inner_path.emplace_back(
-            Point2D(start.x, start.y + (first_increment_y * i)));
-      }
-    }
-
-    int delta_x = cell.ceiling[end_ceiling_index_offset].x -
-                  cell.ceiling[start_ceiling_index_offset].x;
-    int increment_x = 0;
-    if (delta_x != 0) {
-      increment_x = delta_x / abs(delta_x);
-    }
-    for (int i = 0; i < abs(delta_x); i++) {
-      // 提前转
-      if ((cell.ceiling[start_ceiling_index_offset + increment_x * (i + 1)].y -
-               cell.ceiling[start_ceiling_index_offset + increment_x * (i)].y >=
-           2) &&
-          (i + 1 <= abs(delta_x)) && (i <= abs(delta_x))) {
-        int delta =
-            cell.ceiling[start_ceiling_index_offset + increment_x * (i + 1)].y -
-            cell.ceiling[start_ceiling_index_offset + increment_x * (i)].y;
-        int increment = delta / abs(delta);
-        for (int j = 0; j <= abs(delta); j++) {
-          inner_path.emplace_back(Point2D(
-              cell.ceiling[start_ceiling_index_offset + increment_x * i].x,
-              cell.ceiling[start_ceiling_index_offset + increment_x * i].y +
-                  increment * (j)));
-        }
-      }
-      // 滞后转
-      else if ((cell.ceiling[start_ceiling_index_offset + increment_x * (i)].y -
-                    cell.ceiling[start_ceiling_index_offset +
-                                 increment_x * (i + 1)]
-                        .y >=
-                2) &&
-               (i <= abs(delta_x)) && (i + 1 <= abs(delta_x))) {
-        inner_path.emplace_back(
-            cell.ceiling[start_ceiling_index_offset + increment_x * (i)]);
-
-        int delta =
-            cell.ceiling[start_ceiling_index_offset + increment_x * (i + 1)].y -
-            cell.ceiling[start_ceiling_index_offset + increment_x * (i)].y;
-
-        int increment = delta / abs(delta);
-        for (int k = 0; k <= abs(delta); k++) {
-          inner_path.emplace_back(Point2D(
-              cell.ceiling[start_ceiling_index_offset + increment_x * (i + 1)]
-                  .x,
-              cell.ceiling[start_ceiling_index_offset + increment_x * (i + 1)]
-                      .y +
-                  abs(delta) + increment * (k)));
-        }
-      } else {
-        inner_path.emplace_back(
-            cell.ceiling[start_ceiling_index_offset + (increment_x * i)]);
-      }
-    }
-
-    int second_increment_y = 0;
-    if (second_ceiling_delta_y != 0) {
-      second_increment_y = second_ceiling_delta_y / abs(second_ceiling_delta_y);
-
-      for (int i = 1; i <= abs(second_ceiling_delta_y); i++) {
-        inner_path.emplace_back(
-            Point2D(cell.ceiling[end_ceiling_index_offset].x,
-                    cell.ceiling[end_ceiling_index_offset].y +
-                        (second_increment_y * i)));
-      }
-    }
-
-  } else  // to floor
-  {
-    int first_increment_y = 0;
-    if (first_floor_delta_y != 0) {
-      first_increment_y = first_floor_delta_y / abs(first_floor_delta_y);
-
-      for (int i = 1; i <= abs(first_floor_delta_y); i++) {
-        inner_path.emplace_back(
-            Point2D(start.x, start.y + (first_increment_y * i)));
-      }
-    }
-
-    int delta_x = cell.floor[end_floor_index_offset].x -
-                  cell.floor[start_floor_index_offset].x;
-    int increment_x = 0;
-    if (delta_x != 0) {
-      increment_x = delta_x / abs(delta_x);
-    }
-    for (int i = 0; i < abs(delta_x); i++) {
-      // 提前转
-      if ((cell.floor[start_floor_index_offset + increment_x * (i)].y -
-               cell.floor[start_floor_index_offset + increment_x * (i + 1)].y >=
-           2) &&
-          (i <= abs(delta_x)) && (i + 1 <= abs(delta_x))) {
-        int delta =
-            cell.floor[start_floor_index_offset + increment_x * (i + 1)].y -
-            cell.floor[start_floor_index_offset + increment_x * (i)].y;
-        int increment = delta / abs(delta);
-        for (int j = 0; j <= abs(delta); j++) {
-          inner_path.emplace_back(Point2D(
-              cell.floor[start_floor_index_offset + increment_x * (i)].x,
-              cell.floor[start_floor_index_offset + increment_x * (i)].y +
-                  increment * (j)));
-        }
-      }
-      // 滞后转
-      else if ((cell.floor[start_floor_index_offset + increment_x * (i + 1)].y -
-                    cell.floor[start_floor_index_offset + increment_x * (i)]
-                        .y >=
-                2) &&
-               (i + 1 <= abs(delta_x)) && (i <= abs(delta_x))) {
-        inner_path.emplace_back(Point2D(
-            cell.floor[start_floor_index_offset + increment_x * (i)].x,
-            cell.floor[start_floor_index_offset + increment_x * (i)].y));
-
-        int delta =
-            cell.floor[start_floor_index_offset + increment_x * (i + 1)].y -
-            cell.floor[start_floor_index_offset + increment_x * (i)].y;
-
-        int increment = delta / abs(delta);
-        for (int k = 0; k <= abs(delta); k++) {
-          inner_path.emplace_back(Point2D(
-              cell.floor[start_floor_index_offset + increment_x * (i + 1)].x,
-              cell.floor[start_floor_index_offset + increment_x * (i + 1)].y -
-                  abs(delta) + increment * (k)));
-        }
-      } else {
-        inner_path.emplace_back(
-            cell.floor[start_floor_index_offset + (increment_x * i)]);
-      }
-    }
-
-    int second_increment_y = 0;
-    if (second_floor_delta_y != 0) {
-      second_increment_y = second_floor_delta_y / abs(second_floor_delta_y);
-
-      for (int i = 1; i <= abs(second_floor_delta_y); i++) {
-        inner_path.emplace_back(Point2D(
-            cell.floor[end_floor_index_offset].x,
-            cell.floor[end_floor_index_offset].y + (second_increment_y * i)));
-      }
-    }
-  }
-  return inner_path;
 }
 
 std::deque<std::deque<Point2D>> FindLinkingPath(const Point2D& curr_exit,
@@ -1042,145 +265,7 @@ std::deque<int> FindShortestPath(std::vector<CellNode>& cell_graph,
   return cell_path;
 }
 
-void InitializeColorMap(std::deque<cv::Scalar>& JetColorMap, int repeat_times) {
-  for (int i = 0; i <= 255; i++) {
-    for (int j = 0; j < repeat_times; j++) {
-      JetColorMap.emplace_back(cv::Scalar(0, i, 255));
-    }
-  }
-
-  for (int i = 254; i >= 0; i--) {
-    for (int j = 0; j < repeat_times; j++) {
-      JetColorMap.emplace_back(cv::Scalar(0, 255, i));
-    }
-  }
-
-  for (int i = 1; i <= 255; i++) {
-    for (int j = 0; j < repeat_times; j++) {
-      JetColorMap.emplace_back(cv::Scalar(i, 255, 0));
-    }
-  }
-
-  for (int i = 254; i >= 0; i--) {
-    for (int j = 0; j < repeat_times; j++) {
-      JetColorMap.emplace_back(cv::Scalar(255, i, 0));
-    }
-  }
-
-  for (int i = 1; i <= 255; i++) {
-    for (int j = 0; j < repeat_times; j++) {
-      JetColorMap.emplace_back(cv::Scalar(255, 0, i));
-    }
-  }
-
-  for (int i = 254; i >= 1; i--) {
-    for (int j = 0; j < repeat_times; j++) {
-      JetColorMap.emplace_back(cv::Scalar(i, 0, 255));
-    }
-  }
-}
-
-void UpdateColorMap(std::deque<cv::Scalar>& JetColorMap) {
-  cv::Scalar color = JetColorMap.front();
-  JetColorMap.pop_front();
-  JetColorMap.emplace_back(color);
-}
-
 /** 静态路径规划流程 **/
-
-int ComputeRobotRadius(const double& meters_per_pix,
-                       const double& robot_size_in_meters) {
-  int robot_radius = int(robot_size_in_meters / meters_per_pix);
-  return robot_radius;
-}
-
-cv::Mat1b ReadMap(const std::string& map_file_path) {
-  cv::Mat1b original_map = cv::imread(map_file_path, CV_8U);
-  return original_map;
-}
-
-cv::Mat1b PreprocessMap(const cv::Mat1b& original_map) {
-  cv::Mat1b map = original_map.clone();
-  cv::threshold(map, map, 128, 255, cv::THRESH_BINARY);
-  return map;
-}
-
-/*提取轮廓：考虑机器人半径*/
-
-PolygonList ConstructObstacles(
-    const cv::Mat& original_map,
-    const std::vector<std::vector<cv::Point>>& obstacle_contours) {
-  PolygonList obstacles;
-  Polygon obstacle;
-
-  for (const auto& obstacle_contour : obstacle_contours) {
-    for (int j = 0; j < obstacle_contour.size() - 1; j++) {
-      cv::LineIterator line(original_map, obstacle_contour[j],
-                            obstacle_contour[j + 1]);
-      for (int k = 0; k < line.count - 1; k++) {
-        obstacle.emplace_back(Point2D(line.pos().x, line.pos().y));
-        line++;
-      }
-    }
-    cv::LineIterator line(original_map,
-                          obstacle_contour[obstacle_contour.size() - 1],
-                          obstacle_contour[0]);
-    for (int j = 0; j < line.count - 1; j++) {
-      obstacle.emplace_back(Point2D(line.pos().x, line.pos().y));
-      line++;
-    }
-
-    obstacles.emplace_back(obstacle);
-    obstacle.clear();
-  }
-
-  return obstacles;
-}
-
-Polygon ConstructDefaultWall(const cv::Mat& original_map) {
-  std::vector<cv::Point> default_wall_contour = {
-      cv::Point(0, 0), cv::Point(0, original_map.rows - 1),
-      cv::Point(original_map.cols - 1, original_map.rows - 1),
-      cv::Point(original_map.cols - 1, 0)};
-  std::vector<std::vector<cv::Point>> default_wall_contours = {
-      default_wall_contour};
-
-  Polygon default_wall =
-      ConstructObstacles(original_map, default_wall_contours).front();
-
-  return default_wall;
-}
-
-Polygon ConstructWall(const cv::Mat& original_map,
-                      std::vector<cv::Point>& wall_contour) {
-  Polygon wall;
-
-  if (!wall_contour.empty()) {
-    for (int i = 0; i < wall_contour.size() - 1; i++) {
-      cv::LineIterator line(original_map, wall_contour[i], wall_contour[i + 1]);
-      for (int j = 0; j < line.count - 1; j++) {
-        wall.emplace_back(Point2D(line.pos().x, line.pos().y));
-        line++;
-      }
-    }
-    cv::LineIterator line(original_map, wall_contour.back(),
-                          wall_contour.front());
-    for (int i = 0; i < line.count - 1; i++) {
-      wall.emplace_back(Point2D(line.pos().x, line.pos().y));
-      line++;
-    }
-
-    return wall;
-  } else {
-    wall = ConstructDefaultWall(original_map);
-
-    for (const auto& point : wall) {
-      wall_contour.emplace_back(cv::Point(point.x, point.y));
-    }
-
-    return wall;
-  }
-}
 
 std::deque<std::deque<Point2D>> StaticPathPlanning(
     const cv::Mat& map, std::vector<CellNode>& cell_graph,
@@ -1193,15 +278,18 @@ std::deque<std::deque<Point2D>> StaticPathPlanning(
   std::deque<Point2D> local_path;
   int corner_indicator = TOP_LEFT;
 
+  //确定起始点所在的cell索引
   int start_cell_index = DetermineCellIndex(cell_graph, start_point).front();
 
+  //从当前位置到cell内的起始角点
   std::deque<Point2D> init_path = WalkInsideCell(
       cell_graph[start_cell_index], start_point,
       ComputeCellCornerPoints(cell_graph[start_cell_index])[TOP_LEFT]);
+
   local_path.assign(init_path.begin(), init_path.end());
 
   std::deque<CellNode> cell_path =
-      GetVisittingPath(cell_graph, start_cell_index);
+      GetVisitingPath(cell_graph, start_cell_index);
 
   if (visualize_cells || visualize_path) {
     cv::namedWindow("visualize_path", cv::WINDOW_NORMAL);
@@ -1220,14 +308,14 @@ std::deque<std::deque<Point2D>> StaticPathPlanning(
     }
 
     for (const auto& cell : cell_graph) {
-      DrawCells(vis_map, cell);
+      map_visualization::DrawCells(vis_map, cell);
       cv::imshow("map", vis_map);
       cv::waitKey(500);
     }
   }
 
   std::deque<cv::Scalar> JetColorMap;
-  InitializeColorMap(JetColorMap, color_repeats);
+  map_visualization::InitializeColorMap(JetColorMap, color_repeats);
 
   if (visualize_path) {
     cv::circle(vis_map, cv::Point(start_point.x, start_point.y), 1,
@@ -1236,7 +324,7 @@ std::deque<std::deque<Point2D>> StaticPathPlanning(
       vis_map.at<cv::Vec3b>(point.y, point.x) = cv::Vec3b(
           uchar(JetColorMap.front()[0]), uchar(JetColorMap.front()[1]),
           uchar(JetColorMap.front()[2]));
-      UpdateColorMap(JetColorMap);
+      map_visualization::UpdateColorMap(JetColorMap);
       cv::imshow("map", vis_map);
       cv::waitKey(1);
     }
@@ -1259,7 +347,7 @@ std::deque<std::deque<Point2D>> StaticPathPlanning(
         vis_map.at<cv::Vec3b>(point.y, point.x) = cv::Vec3b(
             uchar(JetColorMap.front()[0]), uchar(JetColorMap.front()[1]),
             uchar(JetColorMap.front()[2]));
-        UpdateColorMap(JetColorMap);
+        map_visualization::UpdateColorMap(JetColorMap);
         cv::imshow("map", vis_map);
         cv::waitKey(1);
       }
@@ -1305,7 +393,7 @@ std::deque<std::deque<Point2D>> StaticPathPlanning(
           vis_map.at<cv::Vec3b>(point.y, point.x) = cv::Vec3b(
               uchar(JetColorMap.front()[0]), uchar(JetColorMap.front()[1]),
               uchar(JetColorMap.front()[2]));
-          UpdateColorMap(JetColorMap);
+          map_visualization::UpdateColorMap(JetColorMap);
           cv::imshow("map", vis_map);
           cv::waitKey(1);
         }
@@ -1316,7 +404,7 @@ std::deque<std::deque<Point2D>> StaticPathPlanning(
           vis_map.at<cv::Vec3b>(point.y, point.x) = cv::Vec3b(
               uchar(JetColorMap.front()[0]), uchar(JetColorMap.front()[1]),
               uchar(JetColorMap.front()[2]));
-          UpdateColorMap(JetColorMap);
+          map_visualization::UpdateColorMap(JetColorMap);
           cv::imshow("map", vis_map);
           cv::waitKey(1);
         }
@@ -1360,216 +448,7 @@ std::deque<Point2D> ReturningPathPlanning(
   return returning_path;
 }
 
-std::deque<Point2D> FilterTrajectory(
-    const std::deque<std::deque<Point2D>>& raw_trajectory) {
-  std::deque<Point2D> trajectory;
-
-  for (const auto& sub_trajectory : raw_trajectory) {
-    for (const auto& position : sub_trajectory) {
-      if (!trajectory.empty()) {
-        if (position != trajectory.back()) {
-          trajectory.emplace_back(position);
-        }
-      } else {
-        trajectory.emplace_back(position);
-      }
-    }
-  }
-
-  return trajectory;
-}
-
-void VisualizeTrajectory(const cv::Mat& original_map,
-                         const std::deque<Point2D>& path, int robot_radius,
-                         int vis_mode, int time_interval = 10,
-                         int colors = palette_colors) {
-  cv::Mat3b vis_map;
-  cv::cvtColor(original_map, vis_map, cv::COLOR_GRAY2BGR);
-
-  cv::namedWindow("map", cv::WINDOW_NORMAL);
-
-  std::deque<cv::Scalar> JetColorMap;
-  int color_repeated_times = path.size() / colors + 1;
-  InitializeColorMap(JetColorMap, color_repeated_times);
-
-  switch (vis_mode) {
-    case PATH_MODE:
-      vis_map.at<cv::Vec3b>(path.front().y, path.front().x) = cv::Vec3b(
-          uchar(JetColorMap.front()[0]), uchar(JetColorMap.front()[1]),
-          uchar(JetColorMap.front()[2]));
-      cv::imshow("map", vis_map);
-      cv::waitKey(0);
-
-      for (const auto& position : path) {
-        vis_map.at<cv::Vec3b>(position.y, position.x) = cv::Vec3b(
-            uchar(JetColorMap.front()[0]), uchar(JetColorMap.front()[1]),
-            uchar(JetColorMap.front()[2]));
-        UpdateColorMap(JetColorMap);
-        cv::imshow("map", vis_map);
-        cv::waitKey(time_interval);
-      }
-      break;
-    case ROBOT_MODE:
-      cv::circle(vis_map, cv::Point(path.front().x, path.front().y),
-                 robot_radius, cv::Scalar(255, 204, 153), -1);
-      cv::imshow("map", vis_map);
-      cv::waitKey(0);
-
-      for (const auto& position : path) {
-        cv::circle(vis_map, cv::Point(position.x, position.y), robot_radius,
-                   cv::Scalar(255, 204, 153), -1);
-        cv::imshow("map", vis_map);
-        cv::waitKey(time_interval);
-
-        cv::circle(vis_map, cv::Point(position.x, position.y), robot_radius,
-                   cv::Scalar(255, 229, 204), -1);
-      }
-      break;
-    default:
-      break;
-  }
-
-  cv::waitKey(0);
-}
-
 /** 生成运动指令 **/
-
-/** 两个输入参数都需要是单位向量,
- * 输出的偏航角为正，则是顺时针旋转，为负则是逆时针旋转 **/
-double ComputeYaw(Eigen::Vector2d curr_direction,
-                  Eigen::Vector2d base_direction) {
-  double yaw = std::atan2(curr_direction[1], curr_direction[0]) -
-               std::atan2(base_direction[1], base_direction[0]);
-
-  if (yaw > M_PI) {
-    yaw -= 2 * M_PI;
-  }
-  if (yaw < (-M_PI)) {
-    yaw += 2 * M_PI;
-  }
-
-  yaw = yaw / M_PI * 180.0;
-
-  return yaw;
-}
-
-/** 单位为米 **/
-double ComputeDistance(const Point2D& start, const Point2D& end,
-                       double meters_per_pix) {
-  double dist = std::sqrt(std::pow((end.x - start.x), 2) +
-                          std::pow((end.y - start.y), 2));
-  dist = dist * meters_per_pix;
-  return dist;
-}
-
-class NavigationMessage {
- public:
-  NavigationMessage() {
-    foward_distance = 0.0;
-    global_yaw_angle = 0.0;
-    local_yaw_angle = 0.0;
-  }
-  void SetDistance(double dist) { foward_distance = dist; }
-  void SetGlobalYaw(double global_yaw) { global_yaw_angle = global_yaw; }
-  void SetLocalYaw(double local_yaw) { local_yaw_angle = local_yaw; }
-
-  double GetDistance() { return foward_distance; }
-
-  double GetGlobalYaw() { return global_yaw_angle; }
-
-  double GetLocalYaw() { return local_yaw_angle; }
-
-  void GetMotion(double& dist, double& global_yaw, double& local_yaw) {
-    dist = foward_distance;
-    global_yaw = global_yaw_angle;
-    local_yaw = local_yaw_angle;
-  }
-  void Reset() {
-    foward_distance = 0.0;
-    global_yaw_angle = 0.0;
-    local_yaw_angle = 0.0;
-  }
-
- private:
-  double foward_distance;
-  // 欧拉角表示，逆时针为正，顺时针为负
-  double global_yaw_angle;
-  double local_yaw_angle;
-};
-
-std::vector<NavigationMessage> GetNavigationMessage(
-    const Eigen::Vector2d& curr_direction, std::deque<Point2D> pos_path,
-    double meters_per_pix) {
-  // initialization
-  Eigen::Vector2d global_base_direction = {0, -1};  // {x, y}
-  Eigen::Vector2d local_base_direction = curr_direction;
-
-  Eigen::Vector2d curr_local_direction;
-  Eigen::Vector2d curr_global_direction;
-
-  NavigationMessage message;
-  std::vector<NavigationMessage> message_queue;
-
-  double distance = 0.0;
-  double step_distance = 0.0;
-
-  double prev_global_yaw = ComputeYaw(curr_direction, global_base_direction);
-
-  double curr_global_yaw = 0.0;
-  double curr_local_yaw = 0.0;
-
-  message.SetGlobalYaw(DBL_MAX);
-  message.SetLocalYaw(DBL_MAX);
-
-  for (int i = 0; i < pos_path.size() - 1; i++) {
-    if (pos_path[i + 1] == pos_path[i]) {
-      continue;
-    } else {
-      curr_local_direction = {pos_path[i + 1].x - pos_path[i].x,
-                              pos_path[i + 1].y - pos_path[i].y};
-      curr_local_direction.normalize();
-
-      curr_global_yaw = ComputeYaw(curr_local_direction, global_base_direction);
-      curr_local_yaw = ComputeYaw(curr_local_direction, local_base_direction);
-
-      if (message.GetGlobalYaw() == DBL_MAX)  // initialization
-      {
-        message.SetGlobalYaw(curr_global_yaw);
-      }
-
-      if (message.GetLocalYaw() == DBL_MAX)  // initialization
-      {
-        message.SetLocalYaw(curr_local_yaw);
-      }
-
-      if (curr_global_yaw == prev_global_yaw) {
-        step_distance =
-            ComputeDistance(pos_path[i + 1], pos_path[i], meters_per_pix);
-        distance += step_distance;
-      } else {
-        message.SetDistance(distance);
-        message_queue.emplace_back(message);
-
-        message.Reset();
-        message.SetGlobalYaw(curr_global_yaw);
-        message.SetLocalYaw(curr_local_yaw);
-
-        distance = 0.0;
-        step_distance =
-            ComputeDistance(pos_path[i + 1], pos_path[i], meters_per_pix);
-        distance += step_distance;
-      }
-      prev_global_yaw = curr_global_yaw;
-
-      local_base_direction = curr_local_direction;
-    }
-  }
-
-  message.SetDistance(distance);
-  message_queue.emplace_back(message);
-
-  return message_queue;
-}
 
 /** 动态路径规划（未完成） **/
 
@@ -2071,7 +950,7 @@ std::deque<Point2D> DynamicPathPlanning(
 
   cv::Mat vismap = map.clone();
   std::deque<cv::Scalar> JetColorMap;
-  InitializeColorMap(JetColorMap, color_repeats);
+  map_visualization::InitializeColorMap(JetColorMap, color_repeats);
   if (visualize_path) {
     cv::namedWindow("map", cv::WINDOW_NORMAL);
     cv::imshow("map", vismap);
@@ -2093,7 +972,7 @@ std::deque<Point2D> DynamicPathPlanning(
           vismap.at<cv::Vec3b>(curr_pos.y, curr_pos.x) = cv::Vec3b(
               uchar(JetColorMap.front()[0]), uchar(JetColorMap.front()[1]),
               uchar(JetColorMap.front()[2]));
-          UpdateColorMap(JetColorMap);
+          map_visualization::UpdateColorMap(JetColorMap);
           cv::imshow("map", vismap);
           cv::waitKey(1);
         }
@@ -2141,7 +1020,7 @@ std::deque<Point2D> DynamicPathPlanning(
               vismap.at<cv::Vec3b>(point.y, point.x) = cv::Vec3b(
                   uchar(JetColorMap.front()[0]), uchar(JetColorMap.front()[1]),
                   uchar(JetColorMap.front()[2]));
-              UpdateColorMap(JetColorMap);
+              map_visualization::UpdateColorMap(JetColorMap);
               cv::imshow("map", vismap);
               cv::waitKey(1);
             }
@@ -2165,8 +1044,9 @@ std::deque<Point2D> DynamicPathPlanning(
           curr_exit = curr_sub_path.back();
 
           // for debugging
-          //                    DrawCells(map, curr_cell, cv::Scalar(255, 0,
-          //                    255)); vismap.at<cv::Vec3b>(curr_exit.y,
+          //                    map_visualization::DrawCells(map, curr_cell,
+          //                    cv::Scalar(255, 0, 255));
+          //                    vismap.at<cv::Vec3b>(curr_exit.y,
           //                    curr_exit.x)=cv::Vec3b(0,255,255);
           //                    cv::imshow("map", vismap);
           //                    cv::waitKey(0);
@@ -2202,7 +1082,7 @@ std::deque<Point2D> DynamicPathPlanning(
           vismap.at<cv::Vec3b>(point.y, point.x) = cv::Vec3b(
               uchar(JetColorMap.front()[0]), uchar(JetColorMap.front()[1]),
               uchar(JetColorMap.front()[2]));
-          UpdateColorMap(JetColorMap);
+          map_visualization::UpdateColorMap(JetColorMap);
           cv::imshow("map", vismap);
           cv::waitKey(1);
         }
@@ -2239,7 +1119,7 @@ std::deque<Point2D> DynamicPathPlanning(
     cv::fillPoly(returning_map, returning_obstacle_contours,
                  cv::Scalar(255, 255, 255));
 
-    Polygon returning_map_border = ConstructDefaultWall(returning_map);
+    Polygon returning_map_border = map_sdk::ConstructDefaultWall(returning_map);
     //        std::vector<CellNode> returning_cell_graph =
     //        GenerateCells(returning_map, returning_map_border,
     //        overall_obstacles);//这里需要改
@@ -2248,9 +1128,8 @@ std::deque<Point2D> DynamicPathPlanning(
     // for debugging
     //        for(auto cell:returning_cell_graph)
     //        {
-    //            DrawCells(vismap, cell, cv::Scalar(0, 255, 255));
-    //            cv::imshow("map", vismap);
-    //            cv::waitKey(0);
+    //            map_visualization::DrawCells(vismap, cell, cv::Scalar(0, 255,
+    //            255)); cv::imshow("map", vismap); cv::waitKey(0);
     //        }
     //
 
@@ -2322,81 +1201,6 @@ void MoveAsPathPlannedTest(
     begin = end;
   }
   cv::waitKey(0);
-}
-
-/** 测试数据 **/
-
-/** 静态地图路径规划测试多边形 **/
-std::vector<std::vector<cv::Point>> ConstructHandcraftedContours1() {
-  std::vector<cv::Point> handcrafted_polygon_1_1 = {
-      cv::Point(200, 300), cv::Point(300, 200), cv::Point(200, 100),
-      cv::Point(100, 200)};
-  std::vector<cv::Point> handcrafted_polygon_1_2 = {
-      cv::Point(300, 350), cv::Point(350, 300), cv::Point(300, 250),
-      cv::Point(250, 300)};
-  std::vector<std::vector<cv::Point>> contours = {handcrafted_polygon_1_1,
-                                                  handcrafted_polygon_1_2};
-  return contours;
-}
-
-std::vector<std::vector<cv::Point>> ConstructHandcraftedContours2() {
-  std::vector<cv::Point> handcrafted_polygon_2 = {
-      cv::Point(125, 125), cv::Point(125, 175), cv::Point(225, 175),
-      cv::Point(225, 225), cv::Point(175, 250), cv::Point(225, 300),
-      cv::Point(125, 325), cv::Point(125, 375), cv::Point(375, 375),
-      cv::Point(375, 325), cv::Point(275, 325), cv::Point(275, 275),
-      cv::Point(325, 250), cv::Point(275, 200), cv::Point(375, 175),
-      cv::Point(375, 125)};
-  std::vector<std::vector<cv::Point>> contours = {handcrafted_polygon_2};
-  return contours;
-}
-
-std::vector<std::vector<cv::Point>> ConstructHandcraftedContours3() {
-  std::vector<cv::Point> handcrafted_polygon_3 = {
-      cv::Point(100, 100), cv::Point(100, 500), cv::Point(150, 500),
-      cv::Point(150, 150), cv::Point(450, 150), cv::Point(450, 300),
-      cv::Point(300, 300), cv::Point(300, 250), cv::Point(350, 250),
-      cv::Point(350, 200), cv::Point(250, 200), cv::Point(250, 350),
-      cv::Point(500, 350), cv::Point(500, 100)};
-  std::vector<std::vector<cv::Point>> contours = {handcrafted_polygon_3};
-  return contours;
-}
-
-std::vector<std::vector<cv::Point>> ConstructHandcraftedContours4() {
-  std::vector<cv::Point> handcrafted_polygon_4_1 = {
-      cv::Point(20, 20),   cv::Point(20, 200),  cv::Point(100, 200),
-      cv::Point(100, 399), cv::Point(20, 399),  cv::Point(20, 579),
-      cv::Point(200, 579), cv::Point(200, 499), cv::Point(399, 499),
-      cv::Point(399, 579), cv::Point(579, 579), cv::Point(579, 399),
-      cv::Point(499, 399), cv::Point(499, 200), cv::Point(579, 200),
-      cv::Point(579, 20),  cv::Point(349, 20),  cv::Point(349, 100),
-      cv::Point(250, 100), cv::Point(250, 20)};
-  std::vector<cv::Point> handcrafted_polygon_4_2 = {
-      cv::Point(220, 220), cv::Point(220, 380), cv::Point(380, 380),
-      cv::Point(380, 220)};
-  std::vector<std::vector<cv::Point>> contours = {handcrafted_polygon_4_1,
-                                                  handcrafted_polygon_4_2};
-  return contours;
-}
-
-/** 动态地图路径规划测试多边形 **/
-std::vector<std::vector<cv::Point>> ConstructHandcraftedContours5() {
-  std::vector<cv::Point> handcrafted_polygon_5_1 = {
-      cv::Point(125, 50), cv::Point(50, 125), cv::Point(125, 200),
-      cv::Point(200, 125)};
-  std::vector<cv::Point> handcrafted_polygon_5_2 = {
-      cv::Point(80, 300), cv::Point(80, 400), cv::Point(160, 400),
-      cv::Point(120, 350), cv::Point(160, 300)};
-  std::vector<cv::Point> handcrafted_polygon_5_3 = {
-      cv::Point(100, 450), cv::Point(100, 550), cv::Point(140, 550),
-      cv::Point(140, 450)};
-  std::vector<cv::Point> handcrafted_polygon_5_4 = {
-      cv::Point(300, 150), cv::Point(300, 250), cv::Point(400, 220),
-      cv::Point(400, 180)};
-  std::vector<std::vector<cv::Point>> contours = {
-      handcrafted_polygon_5_1, handcrafted_polygon_5_2, handcrafted_polygon_5_3,
-      handcrafted_polygon_5_4};
-  return contours;
 }
 
 /** 测试辅助函数 **/
@@ -2581,21 +1385,6 @@ void CheckPointType(const cv::Mat& map, const Polygon& wall,
   cv::waitKey(0);
 }
 
-// 可视化提取的轮廓
-void CheckExtractedContours(
-    const cv::Mat& map, const std::vector<std::vector<cv::Point>>& contours) {
-  cv::namedWindow("CheckExtractedContours_map", cv::WINDOW_NORMAL);
-
-  cv::Mat3b canvas = cv::Mat3b(map.size(), CV_8U);
-  canvas.setTo(cv::Scalar(0, 0, 0));
-
-  for (int i = 0; i <= contours.size() - 1; i++) {
-    cv::drawContours(canvas, contours, i, cv::Scalar(255, 0, 0));
-    cv::imshow("CheckExtractedContours_map", canvas);
-    cv::waitKey(0);
-  }
-}
-
 void CheckGeneratedCells(const cv::Mat& map,
                          const std::vector<CellNode>& cell_graph) {
   cv::Mat vis_map = map.clone();
@@ -2605,7 +1394,7 @@ void CheckGeneratedCells(const cv::Mat& map,
   std::cout << "***********CheckGeneratedCells********************************"
             << std::endl;
   for (const auto& cell : cell_graph) {
-    DrawCells(vis_map, cell, cv::Scalar(255, 0, 255));
+    map_visualization::DrawCells(vis_map, cell, cv::Scalar(255, 0, 255));
     cv::imshow("map", vis_map);
     cv::waitKey(0);
   }
@@ -2620,38 +1409,6 @@ void CheckPathNodes(const std::deque<std::deque<Point2D>>& path) {
   }
 }
 
-void CheckPathConsistency(const std::deque<Point2D>& path) {
-  int breakpoints = 0;
-  int duplicates = 0;
-
-  for (int i = 1; i < path.size(); i++) {
-    if (std::abs(path[WrappedIndex((i - 1), path.size())].x - path[i].x) > 1 ||
-        std::abs(path[WrappedIndex((i - 1), path.size())].y - path[i].y) > 1) {
-      breakpoints++;
-      std::cout << "break points :"
-                << path[WrappedIndex((i - 1), path.size())].x << ", "
-                << path[WrappedIndex((i - 1), path.size())].y << "---->"
-                << path[i].x << ", " << path[i].y << std::endl;
-    }
-    if (path[WrappedIndex((i - 1), path.size())] == path[i]) {
-      duplicates++;
-    }
-  }
-  std::cout << "breakpoints: " << breakpoints << std::endl;
-  std::cout << "duplicates: " << duplicates << std::endl;
-}
-
-void CheckMotionCommands(
-    const std::vector<NavigationMessage>& navigation_messages) {
-  double dist = 0.0, global_yaw = 0.0, local_yaw = 0.0;
-  for (auto message : navigation_messages) {
-    message.GetMotion(dist, global_yaw, local_yaw);
-    std::cout << "globally rotate " << global_yaw << " degree(locally rotate "
-              << local_yaw << " degree) and go forward for " << dist << " m."
-              << std::endl;
-  }
-}
-
 /** 测试用例 **/
 
 /** 使用图像数据 **/
@@ -2661,46 +1418,52 @@ void StaticPathPlanningExample1() {
 
   int robot_radius = ComputeRobotRadius(meters_per_pix, robot_size_in_meters);
 
-  cv::Mat1b map = ReadMap("../map.png");
-  map = PreprocessMap(map);
+  cv::Mat1b map = map_sdk::ReadMap("../map.png");
+  map = map_sdk::PreprocessMap(map);
 
   std::vector<std::vector<cv::Point>> obstacle_contours;
   std::vector<std::vector<cv::Point>> wall_contours;
+  //从原始地图中提取墙和障碍物的轮廓，并根据机器人的半径对轮廓进行
   map_sdk::ExtractContours(map, wall_contours, obstacle_contours, robot_radius);
 
-  Polygon wall = ConstructWall(map, wall_contours.front());
-  PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
-
+  Polygon wall = map_sdk::ConstructWall(map, wall_contours.front());
+  PolygonList obstacles = map_sdk::ConstructObstacles(map, obstacle_contours);
+  //执行分区操作，获取分区结果cell_graph
   std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
       map, wall_contours, obstacle_contours, wall, obstacles);
 
+  //设定起始点:默认地图中间
   Point2D start = Point2D(map.cols / 2, map.rows / 2);
+  //根据起始点和分区结果进行路径规划
   std::deque<std::deque<Point2D>> original_planning_path =
       StaticPathPlanning(map, cell_graph, start, robot_radius, false, false);
 
+  //去除连续重复路径
   std::deque<Point2D> path = FilterTrajectory(original_planning_path);
+  //检查路径的连续性和重复性
   CheckPathConsistency(path);
+  //弓字规划路径可视化显示
+  map_visualization::VisualizeTrajectory(map, path, robot_radius, ROBOT_MODE);
 
-  VisualizeTrajectory(map, path, robot_radius, ROBOT_MODE);
-
-  Eigen::Vector2d curr_direction = {0, -1};
-  std::vector<NavigationMessage> messages =
-      GetNavigationMessage(curr_direction, path, meters_per_pix);
-  CheckMotionCommands(messages);
+  //将路径分段打印 just test
+  // Eigen::Vector2d curr_direction = {0, -1};
+  // std::vector<NavigationMessage> messages =
+  //     GetNavigationMessage(curr_direction, path, meters_per_pix);
+  // PrintMotionCommands(messages);
 }
 
 void StaticPathPlanningExample2() {
   int robot_radius = 5;
 
-  cv::Mat1b map = ReadMap("../complicate_map.png");
-  map = PreprocessMap(map);
+  cv::Mat1b map = map_sdk::ReadMap("../complicate_map.png");
+  map = map_sdk::PreprocessMap(map);
 
   std::vector<std::vector<cv::Point>> wall_contours;
   std::vector<std::vector<cv::Point>> obstacle_contours;
   map_sdk::ExtractContours(map, wall_contours, obstacle_contours);
 
-  Polygon wall = ConstructWall(map, wall_contours.front());
-  PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
+  Polygon wall = map_sdk::ConstructWall(map, wall_contours.front());
+  PolygonList obstacles = map_sdk::ConstructObstacles(map, obstacle_contours);
 
   std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
       map, wall_contours, obstacle_contours, wall, obstacles);
@@ -2713,7 +1476,8 @@ void StaticPathPlanningExample2() {
   CheckPathConsistency(path);
 
   int time_interval = 1;
-  VisualizeTrajectory(map, path, robot_radius, PATH_MODE, time_interval);
+  map_visualization::VisualizeTrajectory(map, path, robot_radius, PATH_MODE,
+                                         time_interval);
 }
 
 /** 使用构造数据 **/
@@ -2730,11 +1494,11 @@ void StaticPathPlanningExample3() {
   std::vector<std::vector<cv::Point>> obstacle_contours;
   std::vector<std::vector<cv::Point>> wall_contours;
   map_sdk::ExtractContours(map, wall_contours, obstacle_contours);
-  CheckExtractedContours(map, wall_contours);
-  CheckExtractedContours(map, obstacle_contours);
+  map_visualization::VisualizeExtractedContours(map, wall_contours);
+  map_visualization::VisualizeExtractedContours(map, obstacle_contours);
 
-  PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
-  Polygon wall = ConstructWall(map, wall_contours.front());
+  PolygonList obstacles = map_sdk::ConstructObstacles(map, obstacle_contours);
+  Polygon wall = map_sdk::ConstructWall(map, wall_contours.front());
 
   std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
       map, wall_contours, obstacle_contours, wall, obstacles);
@@ -2750,7 +1514,8 @@ void StaticPathPlanningExample3() {
   CheckPathConsistency(path);
 
   int time_interval = 1;
-  VisualizeTrajectory(map, path, robot_radius, PATH_MODE, time_interval);
+  map_visualization::VisualizeTrajectory(map, path, robot_radius, PATH_MODE,
+                                         time_interval);
 }
 
 void StaticPathPlanningExample4() {
@@ -2766,11 +1531,11 @@ void StaticPathPlanningExample4() {
   std::vector<std::vector<cv::Point>> obstacle_contours;
   std::vector<std::vector<cv::Point>> wall_contours;
   map_sdk::ExtractContours(map, wall_contours, obstacle_contours);
-  CheckExtractedContours(map, wall_contours);
-  CheckExtractedContours(map, obstacle_contours);
+  map_visualization::VisualizeExtractedContours(map, wall_contours);
+  map_visualization::VisualizeExtractedContours(map, obstacle_contours);
 
-  PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
-  Polygon wall = ConstructWall(map, wall_contours.front());
+  PolygonList obstacles = map_sdk::ConstructObstacles(map, obstacle_contours);
+  Polygon wall = map_sdk::ConstructWall(map, wall_contours.front());
 
   cv::Mat3b map_ = cv::Mat3b(map.size());
   map_.setTo(cv::Scalar(0, 0, 0));
@@ -2802,7 +1567,8 @@ void StaticPathPlanningExample4() {
   CheckPathConsistency(path);
 
   int time_interval = 1;
-  VisualizeTrajectory(map, path, robot_radius, PATH_MODE, time_interval);
+  map_visualization::VisualizeTrajectory(map, path, robot_radius, PATH_MODE,
+                                         time_interval);
 }
 
 void StaticPathPlanningExample5() {
@@ -2818,11 +1584,11 @@ void StaticPathPlanningExample5() {
   std::vector<std::vector<cv::Point>> obstacle_contours;
   std::vector<std::vector<cv::Point>> wall_contours;
   map_sdk::ExtractContours(map, wall_contours, obstacle_contours);
-  CheckExtractedContours(map, wall_contours);
-  CheckExtractedContours(map, obstacle_contours);
+  map_visualization::VisualizeExtractedContours(map, wall_contours);
+  map_visualization::VisualizeExtractedContours(map, obstacle_contours);
 
-  PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
-  Polygon wall = ConstructWall(map, wall_contours.front());
+  PolygonList obstacles = map_sdk::ConstructObstacles(map, obstacle_contours);
+  Polygon wall = map_sdk::ConstructWall(map, wall_contours.front());
 
   std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
       map, wall_contours, obstacle_contours, wall, obstacles);
@@ -2838,7 +1604,8 @@ void StaticPathPlanningExample5() {
   CheckPathConsistency(path);
 
   int time_interval = 1;
-  VisualizeTrajectory(map, path, robot_radius, PATH_MODE, time_interval);
+  map_visualization::VisualizeTrajectory(map, path, robot_radius, PATH_MODE,
+                                         time_interval);
 }
 
 void StaticPathPlanningExample6() {
@@ -2861,23 +1628,23 @@ void StaticPathPlanningExample6() {
   std::cout << "****************************************check contours, "
                "wall_contours...."
             << std::endl;
-  CheckExtractedContours(map, wall_contours);
+  map_visualization::VisualizeExtractedContours(map, wall_contours);
   std::cout << "***********************************check contours, "
                "obstacle_contours------"
             << std::endl;
-  CheckExtractedContours(map, obstacle_contours);
+  map_visualization::VisualizeExtractedContours(map, obstacle_contours);
 
-  cv::imwrite("sssss.png", map);
-  PolygonList obstacles = ConstructObstacles(map, obstacle_contours);
+  // cv::imwrite("sssss.png", map);
+  PolygonList obstacles = map_sdk::ConstructObstacles(map, obstacle_contours);
 
   // Debug print
   cv::imshow("ConstructObstacles_map", map);
   cv::waitKey(0);
 
-  Polygon wall = ConstructWall(map, wall_contours.front());
+  Polygon wall = map_sdk::ConstructWall(map, wall_contours.front());
 
   // Debug print
-  cv::imshow("ConstructWall_map", map);
+  cv::imshow("map_sdk::ConstructWall_map", map);
   cv::waitKey(0);
 
   std::vector<CellNode> cell_graph = bcd.ConstructCellGraph(
@@ -2896,7 +1663,8 @@ void StaticPathPlanningExample6() {
   int time_interval = 1;
   std::cout << "************VisualizeTrajectory**************************"
             << std::endl;
-  VisualizeTrajectory(map, path, robot_radius, PATH_MODE, time_interval);
+  map_visualization::VisualizeTrajectory(map, path, robot_radius, PATH_MODE,
+                                         time_interval);
 }
 
 // 未完成
@@ -2905,7 +1673,7 @@ void DynamicPathPlanningExample1() {}
 void TestAllExamples() {
   // StaticPathPlanningExample1();
 
-  // StaticPathPlanningExample2();
+  StaticPathPlanningExample2();
 
   // StaticPathPlanningExample3();
 
@@ -2913,7 +1681,7 @@ void TestAllExamples() {
 
   // StaticPathPlanningExample5();
 
-  StaticPathPlanningExample6();
+  // StaticPathPlanningExample6();
 }
 
 int main() {

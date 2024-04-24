@@ -6,14 +6,11 @@
 #include <vector>
 
 #include "common_data.h"
+#include "math_utils.h"
 using namespace CommonData;
-typedef std::vector<Point2D> Polygon;
-typedef std::vector<Polygon> PolygonList;
-/** 地图默认是空闲区域为白色，障碍物为黑色 **/
+using namespace math_utils;
 
-// PATH_MODE路径可视化:机器人从起点到终点的完整路径;
-// ROBOT_MODE:运动可视化: 模拟机器人的实际运动
-enum VisualizationMode { PATH_MODE, ROBOT_MODE };
+/** 地图默认是空闲区域为白色，障碍物为黑色 **/
 
 //矩形顶点常量定义
 const int TOP_LEFT = 0;
@@ -21,7 +18,7 @@ const int BOTTOM_LEFT = 1;
 const int BOTTOM_RIGHT = 2;
 const int TOP_RIGHT = 3;
 
-const int palette_colors = 1530;
+// const int palette_colors = 1530;
 
 class BoustrophedonCellDecomposition {
  public:
